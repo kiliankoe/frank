@@ -52,3 +52,11 @@ export interface SongSummary {
   is_duet: boolean;
   cover_url?: string;
 }
+
+export interface QueueEntry {
+  id: number;
+  song_id: string;
+  song_title: string;
+  song_artist: string;
+  submitter: string;
+}

@@ -1,9 +1,9 @@
-import type { Song, SongSummary } from "./types";
+import type { QueueEntry, Song, SongSummary } from "./types";
 
 const API_BASE = "/api";
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(url, options);
   if (!response.ok) {
     const error = await response
       .json()
@@ -31,4 +31,40 @@ export function getFileUrl(
   fileType: "audio" | "video" | "cover" | "background",
 ): string {
   return `/files/${songId}/${fileType}`;
+}
+
+// Queue API
+
+export async function getQueue(): Promise<QueueEntry[]> {
+  return fetchJson<QueueEntry[]>(`${API_BASE}/queue`);
+}
+
+export async function addToQueue(
+  songId: string,
+  submitter: string,
+): Promise<QueueEntry> {
+  return fetchJson<QueueEntry>(`${API_BASE}/queue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ song_id: songId, submitter }),
+  });
+}
+
+export async function removeFromQueue(entryId: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/queue/${entryId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to remove queue entry: ${response.status}`);
+  }
+}
+
+export async function removeFromQueueBySong(songId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/queue/song/${songId}`, {
+    method: "DELETE",
+  });
+  // Don't throw if not found - the song might not have been in the queue
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to remove queue entry: ${response.status}`);
+  }
 }

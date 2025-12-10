@@ -4,7 +4,10 @@ mod error;
 mod song;
 mod state;
 
-use axum::{routing::get, Router};
+use axum::{
+    routing::{delete, get},
+    Router,
+};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -45,6 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/songs", get(api::list_songs))
         .route("/api/songs/{id}", get(api::get_song))
         .route("/api/search", get(api::search_songs))
+        .route("/api/queue", get(api::list_queue).post(api::add_to_queue))
+        .route("/api/queue/{id}", delete(api::remove_from_queue))
+        .route("/api/queue/song/{song_id}", delete(api::remove_by_song))
         .route("/files/{song_id}/{file_type}", get(api::serve_file))
         .layer(cors)
         .with_state(state);
