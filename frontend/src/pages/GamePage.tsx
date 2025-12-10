@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore, useAudioStore } from "../stores";
 import { MicrophoneSetup } from "../components/audio";
@@ -236,18 +236,34 @@ function GamePlay() {
     }
   }, [gameState, players, storePlayers, setGameState, navigate]);
 
-  const handlePause = () => {
+  const handlePause = useCallback(() => {
     if (gameState === "playing") {
       pause();
     } else if (gameState === "paused") {
       resume();
     }
-  };
+  }, [gameState, pause, resume]);
 
-  const handleEnd = () => {
+  const handleEnd = useCallback(() => {
     setGameState("finished");
     navigate("/results");
-  };
+  }, [setGameState, navigate]);
+
+  // Keyboard shortcuts: spacebar for pause/resume, escape to exit
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        handlePause();
+      } else if (e.code === "Escape") {
+        e.preventDefault();
+        handleEnd();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handlePause, handleEnd]);
 
   if (isLoading) {
     return (
@@ -335,17 +351,47 @@ function GamePlay() {
             </h2>
             <p className="text-gray-400">{song.metadata.artist}</p>
           </div>
-          <ScoreDisplay
-            players={players.map((p, i) => ({
-              id: p.id,
-              name:
-                storePlayers.find((sp) => sp.id === p.id)?.name ??
-                `Player ${i + 1}`,
-              score: p.score,
-              color: playerColors[i % playerColors.length],
-              maxScore: getPlayerMaxScore(p.id),
-            }))}
-          />
+          <div className="flex items-start gap-4">
+            <ScoreDisplay
+              players={players.map((p, i) => ({
+                id: p.id,
+                name:
+                  storePlayers.find((sp) => sp.id === p.id)?.name ??
+                  `Player ${i + 1}`,
+                score: p.score,
+                color: playerColors[i % playerColors.length],
+                maxScore: getPlayerMaxScore(p.id),
+              }))}
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handlePause}
+                className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded transition-colors"
+                title={gameState === "paused" ? "Resume (Space)" : "Pause (Space)"}
+              >
+                {gameState === "paused" ? (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleEnd}
+                className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded transition-colors"
+                title="End Song (Esc)"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Pitch tracks */}
@@ -384,25 +430,8 @@ function GamePlay() {
         </div>
 
         {/* Bottom bar */}
-        <div className="p-4 space-y-4">
+        <div className="p-4">
           <ProgressBar currentTimeMs={currentTimeMs} durationMs={duration} />
-
-          <div className="flex justify-center gap-4">
-            <button
-              type="button"
-              onClick={handlePause}
-              className="bg-white/20 hover:bg-white/30 text-white px-6 py-2 rounded-lg transition-colors"
-            >
-              {gameState === "paused" ? "Resume" : "Pause"}
-            </button>
-            <button
-              type="button"
-              onClick={handleEnd}
-              className="bg-red-600/80 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors"
-            >
-              End Song
-            </button>
-          </div>
         </div>
       </div>
     </div>
