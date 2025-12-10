@@ -316,7 +316,10 @@ export class GameEngine {
 
     for (const tracker of this.noteTrackers.values()) {
       const nextNote = tracker.getNextNote(timeMs);
-      if (nextNote && (!earliestNote || nextNote.startTimeMs < earliestNote.startTimeMs)) {
+      if (
+        nextNote &&
+        (!earliestNote || nextNote.startTimeMs < earliestNote.startTimeMs)
+      ) {
         earliestNote = nextNote;
       }
     }
