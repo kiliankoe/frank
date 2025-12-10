@@ -190,10 +190,24 @@ function GamePlay() {
   });
 
   const scorer = useMemo(() => new Scorer(), []);
-  const maxScore = useMemo(
+
+  // Calculate max score per track
+  const maxScoreP1 = useMemo(
     () => (song ? scorer.calculateMaxScore(song.notes) : 0),
     [song, scorer],
   );
+  const maxScoreP2 = useMemo(
+    () =>
+      song?.notes_p2 ? scorer.calculateMaxScore(song.notes_p2) : maxScoreP1,
+    [song, scorer, maxScoreP1],
+  );
+
+  // Helper to get max score for a player based on their track
+  const getPlayerMaxScore = (playerId: number) => {
+    if (!gameEngine) return maxScoreP1;
+    const track = gameEngine.getPlayerTrack(playerId);
+    return track === 2 ? maxScoreP2 : maxScoreP1;
+  };
 
   useEffect(() => {
     if (gameState === "ready") {
@@ -267,8 +281,18 @@ function GamePlay() {
   if (!song || !gameEngine) return null;
 
   const primaryNoteTracker = gameEngine.getNoteTracker(1);
+  const secondaryNoteTracker = gameEngine.getNoteTracker(2);
+  const isDuet = secondaryNoteTracker !== null;
+
+  // Get phrases for both tracks
   const nextPhrase = primaryNoteTracker?.getNextPhrase(currentTimeMs) ?? null;
   const duration = primaryNoteTracker?.getSongDuration() ?? 0;
+
+  // P2 phrases for duets
+  const currentPhraseP2 =
+    secondaryNoteTracker?.getCurrentPhrase(currentTimeMs) ?? null;
+  const nextPhraseP2 =
+    secondaryNoteTracker?.getNextPhrase(currentTimeMs) ?? null;
 
   // Helper to get visible notes for a specific player's track
   const getPlayerNotes = (playerId: number) => {
@@ -319,8 +343,8 @@ function GamePlay() {
                 `Player ${i + 1}`,
               score: p.score,
               color: playerColors[i % playerColors.length],
+              maxScore: getPlayerMaxScore(p.id),
             }))}
-            maxScore={maxScore}
           />
         </div>
 
@@ -348,6 +372,14 @@ function GamePlay() {
             currentPhrase={currentPhrase}
             nextPhrase={nextPhrase}
             currentTimeMs={currentTimeMs}
+            currentPhraseP2={isDuet ? currentPhraseP2 : undefined}
+            nextPhraseP2={isDuet ? nextPhraseP2 : undefined}
+            singerP1={
+              isDuet ? (song.metadata.duet_singer_p1 ?? "Player 1") : undefined
+            }
+            singerP2={
+              isDuet ? (song.metadata.duet_singer_p2 ?? "Player 2") : undefined
+            }
           />
         </div>
 
