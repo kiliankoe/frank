@@ -31,7 +31,8 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     const { isInitialized } = get();
     if (isInitialized) return;
 
-    const audioContext = new AudioContext();
+    // Use 'interactive' latency hint for responsive pitch detection
+    const audioContext = new AudioContext({ latencyHint: "interactive" });
     set({ audioContext, isInitialized: true });
   },
 
