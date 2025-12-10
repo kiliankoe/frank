@@ -155,33 +155,68 @@ function AddToQueueModal({
   );
 }
 
-function QueueDisplay({ queue }: { queue: QueueEntry[] }) {
-  if (queue.length === 0) return null;
-
+function QueueModal({
+  queue,
+  onClose,
+}: {
+  queue: QueueEntry[];
+  onClose: () => void;
+}) {
   return (
-    <div className="bg-purple-900/30 border-t border-purple-500/30">
-      <div className="px-4 py-2 text-sm font-semibold text-purple-300">
-        Up Next ({queue.length})
-      </div>
-      <div className="max-h-48 overflow-y-auto">
-        {queue.map((entry, index) => (
-          <div
-            key={entry.id}
-            className="px-4 py-2 flex items-center gap-3 border-t border-white/5"
+    <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50">
+      <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg max-h-[70vh] flex flex-col">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-lg font-semibold text-white">
+            Up Next ({queue.length})
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-white"
           >
-            <span className="text-purple-400 font-mono text-sm w-6">
-              {index + 1}.
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-white text-sm truncate">
-                {entry.song_title}
-              </div>
-              <div className="text-gray-400 text-xs truncate">
-                {entry.song_artist} - requested by {entry.submitter}
-              </div>
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {queue.length === 0 ? (
+            <div className="p-8 text-center text-gray-400">
+              No songs in queue
             </div>
-          </div>
-        ))}
+          ) : (
+            queue.map((entry, index) => (
+              <div
+                key={entry.id}
+                className="px-4 py-3 flex items-center gap-3 border-b border-white/5"
+              >
+                <span className="text-purple-400 font-mono text-sm w-6">
+                  {index + 1}.
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white truncate">{entry.song_title}</div>
+                  <div className="text-gray-400 text-sm truncate">
+                    {entry.song_artist}
+                  </div>
+                  <div className="text-gray-500 text-xs">
+                    requested by {entry.submitter}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
@@ -192,6 +227,7 @@ export function SonglistPage() {
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [search, setSearch] = useState("");
   const [selectedSong, setSelectedSong] = useState<SongSummary | null>(null);
+  const [showQueue, setShowQueue] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -278,50 +314,71 @@ export function SonglistPage() {
       {/* Header with search */}
       <header className="flex-shrink-0 bg-gray-950 border-b border-white/10 z-40">
         <div className="px-4 py-3">
-          <div className="relative">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search songs or artists..."
-              className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-            />
-            {search && (
+          <div className="flex gap-2">
+            {queue.length > 0 && (
               <button
                 type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                onClick={() => setShowQueue(true)}
+                className="flex-shrink-0 w-10 h-10 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded-lg flex items-center justify-center relative"
               >
                 <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
+                  className="w-6 h-6 text-white"
                   viewBox="0 0 24 24"
+                  fill="currentColor"
                   aria-hidden="true"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                  <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" />
                 </svg>
+                <span className="absolute -top-1 -right-1 bg-white text-purple-600 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {queue.length}
+                </span>
               </button>
             )}
+            <div className="relative flex-1">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search songs or artists..."
+                className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
           <p className="text-gray-500 text-sm mt-2">
             {filteredSongs.length} song{filteredSongs.length !== 1 ? "s" : ""}{" "}
@@ -345,14 +402,16 @@ export function SonglistPage() {
         )}
       </main>
 
-      {/* Queue display */}
-      <QueueDisplay queue={queue} />
-
       {/* Success toast */}
       {successMessage && (
         <div className="fixed bottom-4 left-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg text-center z-50 animate-pulse">
           {successMessage}
         </div>
+      )}
+
+      {/* Queue modal */}
+      {showQueue && (
+        <QueueModal queue={queue} onClose={() => setShowQueue(false)} />
       )}
 
       {/* Add to queue modal */}
