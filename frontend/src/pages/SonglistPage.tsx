@@ -36,58 +36,56 @@ function ArtistSection({
   onSelectSong: (song: SongSummary) => void;
 }) {
   return (
-    <div className="border-b border-white/10">
-      <div className="px-4 py-3 flex items-center justify-between">
+    <>
+      <div className="sticky top-0 z-30 px-4 py-3 flex items-center justify-between bg-gray-950 border-b border-white/10">
         <span className="font-semibold text-white">{artist.name}</span>
         <span className="text-gray-400 text-sm">
           {artist.songs.length} song{artist.songs.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="bg-white/5">
-        {artist.songs.map((song) => (
-          <button
-            key={song.id}
-            type="button"
-            onClick={() => onSelectSong(song)}
-            className="w-full px-4 py-3 pl-8 flex items-center gap-3 text-left hover:bg-white/10 active:bg-white/15 border-t border-white/5"
-          >
-            {song.cover_url ? (
-              <img
-                src={getFileUrl(song.id, "cover")}
-                alt=""
-                className="w-10 h-10 rounded object-cover bg-gray-800 flex-shrink-0"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="w-10 h-10 rounded bg-gray-800 flex-shrink-0" />
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="text-white truncate">{song.title}</div>
-              <div className="text-gray-400 text-xs flex gap-2">
-                {song.is_duet && <span className="text-pink-400">Duet</span>}
-                {song.language && <span>{song.language}</span>}
-              </div>
+      {artist.songs.map((song) => (
+        <button
+          key={song.id}
+          type="button"
+          onClick={() => onSelectSong(song)}
+          className="w-full px-4 py-3 pl-8 flex items-center gap-3 text-left bg-white/5 hover:bg-white/10 active:bg-white/15 border-b border-white/5"
+        >
+          {song.cover_url ? (
+            <img
+              src={getFileUrl(song.id, "cover")}
+              alt=""
+              className="w-10 h-10 rounded object-cover bg-gray-800 flex-shrink-0"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          ) : (
+            <div className="w-10 h-10 rounded bg-gray-800 flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-white truncate">{song.title}</div>
+            <div className="text-gray-400 text-xs flex gap-2">
+              {song.is_duet && <span className="text-pink-400">Duet</span>}
+              {song.language && <span>{song.language}</span>}
             </div>
-            <svg
-              className="w-5 h-5 text-gray-400 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-          </button>
-        ))}
-      </div>
-    </div>
+          </div>
+          <svg
+            className="w-5 h-5 text-gray-400 flex-shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -276,9 +274,9 @@ export function SonglistPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
       {/* Header with search */}
-      <header className="sticky top-0 bg-gray-950/95 backdrop-blur border-b border-white/10 z-40">
+      <header className="flex-shrink-0 bg-gray-950 border-b border-white/10 z-40">
         <div className="px-4 py-3">
           <div className="relative">
             <svg
