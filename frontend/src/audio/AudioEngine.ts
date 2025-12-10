@@ -31,8 +31,9 @@ export class AudioEngine {
   loadAudio(url: string): HTMLAudioElement {
     this.unloadAudio();
 
-    this.audioElement = new Audio(url);
+    this.audioElement = new Audio();
     this.audioElement.crossOrigin = "anonymous";
+    this.audioElement.src = url;
 
     this.sourceNode = this.audioContext.createMediaElementSource(
       this.audioElement,
@@ -45,7 +46,9 @@ export class AudioEngine {
   unloadAudio(): void {
     if (this.audioElement) {
       this.audioElement.pause();
-      this.audioElement.src = "";
+      // Remove src without triggering error by removing all event listeners first
+      this.audioElement.removeAttribute("src");
+      this.audioElement.load(); // Reset the element
       this.audioElement = null;
     }
 

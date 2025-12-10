@@ -68,6 +68,7 @@ export function useGame({
 
     // Load song
     setIsLoading(true);
+    setError(null);
     engine
       .loadSong(song)
       .then(() => {
