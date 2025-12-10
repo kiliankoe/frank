@@ -134,9 +134,17 @@ export class NoteTracker {
   }
 
   /**
-   * Get the next phrase after the current time
+   * Get the next phrase after the current one
+   * This accounts for the lead-in window used by getCurrentPhrase
    */
   getNextPhrase(timeMs: number): Phrase | null {
+    const currentPhrase = this.getCurrentPhrase(timeMs);
+    if (currentPhrase) {
+      // Find the phrase after the current one
+      const currentIndex = this.phrases.indexOf(currentPhrase);
+      return this.phrases[currentIndex + 1] ?? null;
+    }
+    // No current phrase - return the first upcoming phrase
     return this.phrases.find((phrase) => phrase.startTimeMs > timeMs) ?? null;
   }
 
