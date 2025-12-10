@@ -1,6 +1,6 @@
 import type { Note } from "../api/types";
 import type { PitchSample, NoteResult } from "./types";
-import { isPitchMatch } from "../utils/pitchUtils";
+import { getPitchAccuracy } from "../utils/pitchUtils";
 
 const POINTS_PER_BEAT = 10;
 const GOLDEN_MULTIPLIER = 2;
@@ -58,11 +58,23 @@ export class Scorer {
       };
     }
 
-    const correctSamples = pitchSamples.filter(
-      (s) => s.frequency > 0 && isPitchMatch(s.frequency, note.pitch),
-    );
+    // Use weighted accuracy scoring - partial credit for close pitches
+    let totalAccuracy = 0;
+    let validSamples = 0;
 
-    const accuracy = correctSamples.length / pitchSamples.length;
+    for (const sample of pitchSamples) {
+      if (sample.frequency > 0) {
+        totalAccuracy += getPitchAccuracy(sample.frequency, note.pitch);
+        validSamples++;
+      }
+    }
+
+    // Calculate weighted accuracy
+    // Give some baseline credit for singing (even if off-pitch) to feel more rewarding
+    const pitchAccuracy = validSamples > 0 ? totalAccuracy / validSamples : 0;
+    const participationBonus = validSamples > 0 ? 0.1 : 0; // Small bonus for any sound
+    const accuracy = Math.min(1, pitchAccuracy + participationBonus);
+
     const earnedPoints = Math.round(maxPoints * accuracy);
 
     return {

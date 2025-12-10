@@ -1,5 +1,11 @@
 import { PitchDetector } from "./PitchDetector";
 
+// Smoothing configuration
+const SMOOTHING_FACTOR = 0.3; // Lower = smoother (0-1)
+const PITCH_HOLD_TIME_MS = 180; // How long pitch lingers after input stops
+const PITCH_HOLD_DECAY_RATE = 0.85; // How fast held pitch fades (per frame)
+const MIN_CONFIDENCE_THRESHOLD = 0.02; // Minimum signal strength to detect pitch
+
 export interface MicrophoneStream {
   deviceId: string;
   stream: MediaStream;
@@ -8,14 +14,43 @@ export interface MicrophoneStream {
   pitchDetector: PitchDetector;
 }
 
+interface SmoothedPitchState {
+  lastPitch: number;
+  smoothedPitch: number;
+  lastValidPitchTime: number;
+  holdPitch: number;
+  confidence: number;
+}
+
 export class MicrophoneManager {
   private audioContext: AudioContext;
   private streams: Map<string, MicrophoneStream> = new Map();
   private sampleRate: number;
+  private pitchStates: Map<string, SmoothedPitchState> = new Map();
 
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext;
     this.sampleRate = audioContext.sampleRate;
+  }
+
+  private initPitchState(deviceId: string): SmoothedPitchState {
+    const state: SmoothedPitchState = {
+      lastPitch: -1,
+      smoothedPitch: -1,
+      lastValidPitchTime: 0,
+      holdPitch: -1,
+      confidence: 0,
+    };
+    this.pitchStates.set(deviceId, state);
+    return state;
+  }
+
+  private getSignalStrength(dataArray: Float32Array): number {
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      sum += dataArray[i] * dataArray[i];
+    }
+    return Math.sqrt(sum / dataArray.length);
   }
 
   async connectMicrophone(deviceId: string): Promise<MicrophoneStream> {
@@ -66,6 +101,7 @@ export class MicrophoneManager {
     micStream.pitchDetector.dispose();
 
     this.streams.delete(deviceId);
+    this.pitchStates.delete(deviceId);
   }
 
   disconnectAll(): void {
@@ -82,7 +118,64 @@ export class MicrophoneManager {
     const dataArray = new Float32Array(bufferSize);
     micStream.analyser.getFloatTimeDomainData(dataArray);
 
-    return micStream.pitchDetector.detect(dataArray, this.sampleRate);
+    // Get or initialize pitch state for smoothing
+    let state = this.pitchStates.get(deviceId);
+    if (!state) {
+      state = this.initPitchState(deviceId);
+    }
+
+    const now = performance.now();
+    const signalStrength = this.getSignalStrength(dataArray);
+    const rawPitch = micStream.pitchDetector.detect(dataArray, this.sampleRate);
+
+    // Check if we have a valid pitch with sufficient signal
+    const hasValidPitch =
+      rawPitch > 0 && signalStrength > MIN_CONFIDENCE_THRESHOLD;
+
+    if (hasValidPitch) {
+      // Apply exponential moving average smoothing
+      if (state.smoothedPitch > 0) {
+        // Check for large jumps (likely octave errors or new note)
+        const pitchRatio = rawPitch / state.smoothedPitch;
+        const isLargeJump = pitchRatio > 1.5 || pitchRatio < 0.67;
+
+        if (isLargeJump) {
+          // For large jumps, respond faster but still smooth a bit
+          state.smoothedPitch = state.smoothedPitch * 0.5 + rawPitch * 0.5;
+        } else {
+          // Normal smoothing
+          state.smoothedPitch =
+            state.smoothedPitch * (1 - SMOOTHING_FACTOR) +
+            rawPitch * SMOOTHING_FACTOR;
+        }
+      } else {
+        // First valid pitch, use it directly
+        state.smoothedPitch = rawPitch;
+      }
+
+      state.lastPitch = rawPitch;
+      state.lastValidPitchTime = now;
+      state.holdPitch = state.smoothedPitch;
+      state.confidence = Math.min(1, signalStrength * 10);
+
+      return state.smoothedPitch;
+    }
+
+    // No valid pitch detected - check if we should hold/linger
+    const timeSinceLastValid = now - state.lastValidPitchTime;
+
+    if (timeSinceLastValid < PITCH_HOLD_TIME_MS && state.holdPitch > 0) {
+      // Still within hold time - return the held pitch
+      // Apply decay to make it fade naturally
+      state.confidence *= PITCH_HOLD_DECAY_RATE;
+      return state.holdPitch;
+    }
+
+    // Pitch hold expired, clear state
+    state.smoothedPitch = -1;
+    state.holdPitch = -1;
+    state.confidence = 0;
+    return -1;
   }
 
   getAllPitches(): Map<string, number> {

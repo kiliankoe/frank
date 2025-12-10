@@ -13,6 +13,26 @@ interface PitchTrackProps {
 
 const NOTE_HEIGHT = 16;
 const PITCH_RANGE = 24; // Show 2 octaves
+const PITCH_INDICATOR_RADIUS = 12; // Larger indicator for visibility
+const PITCH_HISTORY_GAP_THRESHOLD_MS = 200; // Break line if gap is larger than this
+
+/**
+ * Shift a pitch to the nearest octave of a target pitch.
+ * This implements UltraStar-style octave correction where we only care about
+ * the pitch class (C, D, E, etc.) not the absolute octave.
+ * This allows men to sing songs meant for women and vice versa.
+ */
+function shiftToNearestOctave(pitch: number, targetPitch: number): number {
+  // Get the pitch class difference (0-11)
+  let diff = (pitch - targetPitch) % 12;
+
+  // Normalize to -6 to +5 range (closest octave)
+  if (diff > 6) diff -= 12;
+  if (diff < -6) diff += 12;
+
+  // Return the target pitch plus the small difference
+  return targetPitch + diff;
+}
 
 export function PitchTrack({
   notes,
@@ -61,6 +81,27 @@ export function PitchTrack({
       maxPitch = Math.max(maxPitch, note.pitch);
     }
 
+    // Calculate center pitch of visible notes for octave correction
+    // This is the reference point we'll shift the player's pitch towards
+    let centerPitch = 0;
+    if (visibleNotes.length > 0) {
+      centerPitch = (minPitch + maxPitch) / 2;
+    } else if (notes.length > 0) {
+      // Fall back to all notes if no visible notes
+      const allMinPitch = Math.min(...notes.map((n) => n.pitch));
+      const allMaxPitch = Math.max(...notes.map((n) => n.pitch));
+      centerPitch = (allMinPitch + allMaxPitch) / 2;
+    }
+
+    // Convert player pitch to UltraStar pitch with octave correction
+    let playerPitchUltrastar: number | null = null;
+    if (playerPitch > 0) {
+      const pitchMidi = frequencyToMidi(playerPitch);
+      const rawPitch = pitchMidi - 60;
+      // Apply octave correction to shift detected pitch to same octave as target notes
+      playerPitchUltrastar = shiftToNearestOctave(rawPitch, centerPitch);
+    }
+
     // Default range if no notes visible
     if (minPitch === Infinity) {
       minPitch = -6;
@@ -69,6 +110,12 @@ export function PitchTrack({
       // Add padding
       minPitch -= 4;
       maxPitch += 4;
+    }
+
+    // Expand range to include player's current pitch (with padding)
+    if (playerPitchUltrastar !== null) {
+      minPitch = Math.min(minPitch, playerPitchUltrastar - 2);
+      maxPitch = Math.max(maxPitch, playerPitchUltrastar + 2);
     }
 
     const pitchRange = Math.max(maxPitch - minPitch, PITCH_RANGE);
@@ -145,9 +192,9 @@ export function PitchTrack({
       ctx.strokeRect(x, y - NOTE_HEIGHT / 2, noteWidth, NOTE_HEIGHT);
     }
 
-    // Draw pitch history
+    // Draw pitch history with smooth curves
     ctx.strokeStyle = playerColor;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
@@ -159,38 +206,116 @@ export function PitchTrack({
     );
 
     if (relevantHistory.length > 1) {
-      ctx.beginPath();
-      let started = false;
-
-      for (let i = 0; i < relevantHistory.length; i++) {
-        const sample = relevantHistory[i];
+      // Convert samples to points with octave correction
+      const points: { x: number; y: number; time: number }[] = [];
+      for (const sample of relevantHistory) {
         const x = timeToX(sample.timeMs);
         const pitchMidi = frequencyToMidi(sample.frequency);
-        const pitchUltrastar = pitchMidi - 60; // Convert to UltraStar pitch
+        const rawPitch = pitchMidi - 60;
+        const pitchUltrastar = shiftToNearestOctave(rawPitch, centerPitch);
         const y = pitchToY(pitchUltrastar);
+        points.push({ x, y, time: sample.timeMs });
+      }
 
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
+      // Draw with smooth quadratic curves, breaking on gaps
+      ctx.beginPath();
+      let segmentStarted = false;
+
+      for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        const prevPoint = i > 0 ? points[i - 1] : null;
+
+        // Check for time gap (new segment)
+        const hasGap =
+          prevPoint &&
+          point.time - prevPoint.time > PITCH_HISTORY_GAP_THRESHOLD_MS;
+
+        if (!segmentStarted || hasGap) {
+          // Start new segment
+          if (hasGap && segmentStarted) {
+            ctx.stroke();
+            ctx.beginPath();
+          }
+          ctx.moveTo(point.x, point.y);
+          segmentStarted = true;
+        } else if (i < points.length - 1) {
+          // Use quadratic curve to midpoint for smoothing
+          const nextPoint = points[i + 1];
+          const midX = (point.x + nextPoint.x) / 2;
+          const midY = (point.y + nextPoint.y) / 2;
+          ctx.quadraticCurveTo(point.x, point.y, midX, midY);
         } else {
-          ctx.lineTo(x, y);
+          // Last point - draw line to it
+          ctx.lineTo(point.x, point.y);
         }
       }
 
       ctx.stroke();
+
+      // Draw a subtle glow trail behind the main line
+      ctx.save();
+      ctx.strokeStyle = `${playerColor}40`;
+      ctx.lineWidth = 8;
+      ctx.filter = "blur(4px)";
+      ctx.beginPath();
+      segmentStarted = false;
+
+      for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        const prevPoint = i > 0 ? points[i - 1] : null;
+        const hasGap =
+          prevPoint &&
+          point.time - prevPoint.time > PITCH_HISTORY_GAP_THRESHOLD_MS;
+
+        if (!segmentStarted || hasGap) {
+          if (hasGap && segmentStarted) {
+            ctx.stroke();
+            ctx.beginPath();
+          }
+          ctx.moveTo(point.x, point.y);
+          segmentStarted = true;
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
     }
 
-    // Draw current pitch indicator
-    if (playerPitch > 0) {
-      const pitchMidi = frequencyToMidi(playerPitch);
-      const pitchUltrastar = pitchMidi - 60;
-      const y = pitchToY(pitchUltrastar);
+    // Draw current pitch indicator with horizontal reference line
+    if (playerPitchUltrastar !== null) {
+      const y = pitchToY(playerPitchUltrastar);
 
+      // Draw horizontal reference line across the entire track
+      ctx.strokeStyle = `${playerColor}80`; // Semi-transparent
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]); // Dashed line
       ctx.beginPath();
-      ctx.arc(currentX, y, 8, 0, Math.PI * 2);
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+      ctx.setLineDash([]); // Reset dash
+
+      // Draw glow effect for the indicator
+      ctx.shadowColor = playerColor;
+      ctx.shadowBlur = 15;
+
+      // Draw main pitch indicator circle
+      ctx.beginPath();
+      ctx.arc(currentX, y, PITCH_INDICATOR_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = playerColor;
       ctx.fill();
+      ctx.shadowBlur = 0; // Reset shadow for stroke
+
+      // Draw white border
       ctx.strokeStyle = "white";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Draw inner highlight for better visibility
+      ctx.beginPath();
+      ctx.arc(currentX, y, PITCH_INDICATOR_RADIUS - 4, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
       ctx.lineWidth = 2;
       ctx.stroke();
     }

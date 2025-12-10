@@ -38,12 +38,12 @@ export function frequencyToUltrastarPitch(freq: number): number {
  * Check if detected pitch matches expected pitch (with octave tolerance)
  * @param detectedFreq - Detected frequency in Hz
  * @param expectedPitch - Expected UltraStar pitch (0 = C4)
- * @param tolerance - Semitone tolerance (default 2)
+ * @param tolerance - Semitone tolerance (default 2.5 - slightly forgiving)
  */
 export function isPitchMatch(
   detectedFreq: number,
   expectedPitch: number,
-  tolerance: number = 2,
+  tolerance: number = 2.5,
 ): boolean {
   if (detectedFreq <= 0) return false;
 
@@ -53,6 +53,37 @@ export function isPitchMatch(
   // Allow octave errors (±12 semitones)
   const diff = Math.abs(detectedMidi - expectedMidi) % 12;
   return diff <= tolerance || diff >= 12 - tolerance;
+}
+
+/**
+ * Get a scoring weight based on how close the pitch is (for partial credit)
+ * Returns 1.0 for perfect match, scales down to 0 for far misses
+ * @param detectedFreq - Detected frequency in Hz
+ * @param expectedPitch - Expected UltraStar pitch (0 = C4)
+ */
+export function getPitchAccuracy(
+  detectedFreq: number,
+  expectedPitch: number,
+): number {
+  if (detectedFreq <= 0) return 0;
+
+  const detectedMidi = frequencyToMidi(detectedFreq);
+  const expectedMidi = ultrastarPitchToMidi(expectedPitch);
+
+  // Get difference within octave
+  let diff = Math.abs(detectedMidi - expectedMidi) % 12;
+  if (diff > 6) diff = 12 - diff;
+
+  // Perfect match (within 0.5 semitones) = 1.0
+  // 1 semitone off = 0.9
+  // 2 semitones off = 0.7
+  // 3 semitones off = 0.4
+  // 4+ semitones off = 0
+  if (diff <= 0.5) return 1.0;
+  if (diff <= 1.5) return 0.9;
+  if (diff <= 2.5) return 0.7;
+  if (diff <= 3.5) return 0.4;
+  return 0;
 }
 
 /**

@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  addToQueue,
-  getFileUrl,
-  getQueue,
-  getSongs,
-} from "../api/client";
+import { addToQueue, getFileUrl, getQueue, getSongs } from "../api/client";
 import type { QueueEntry, SongSummary } from "../api/types";
 
 interface ArtistGroup {
@@ -94,9 +89,7 @@ function ArtistSection({
               <div className="flex-1 min-w-0">
                 <div className="text-white truncate">{song.title}</div>
                 <div className="text-gray-400 text-xs flex gap-2">
-                  {song.is_duet && (
-                    <span className="text-pink-400">Duet</span>
-                  )}
+                  {song.is_duet && <span className="text-pink-400">Duet</span>}
                   {song.language && <span>{song.language}</span>}
                 </div>
               </div>
@@ -291,9 +284,7 @@ export function SonglistPage() {
       try {
         await addToQueue(selectedSong.id, name);
         setQueue(await getQueue());
-        setSuccessMessage(
-          `Added "${selectedSong.title}" to the queue!`,
-        );
+        setSuccessMessage(`Added "${selectedSong.title}" to the queue!`);
         setTimeout(() => setSuccessMessage(null), 3000);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to add to queue");
@@ -365,8 +356,19 @@ export function SonglistPage() {
                 onClick={() => setSearch("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             )}
@@ -381,9 +383,7 @@ export function SonglistPage() {
       {/* Song list */}
       <main className="flex-1 overflow-y-auto">
         {artistGroups.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">
-            No songs found
-          </div>
+          <div className="p-8 text-center text-gray-400">No songs found</div>
         ) : (
           artistGroups.map((artist) => (
             <ArtistSection

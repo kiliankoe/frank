@@ -3,7 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useSongStore, useGameStore } from "../stores";
 import { SongSearch, SongList } from "../components/songs";
 import type { QueueEntry, SongSummary } from "../api/types";
-import { getQueue, removeFromQueue, removeFromQueueBySong } from "../api/client";
+import {
+  getQueue,
+  removeFromQueue,
+  removeFromQueueBySong,
+} from "../api/client";
 
 function QueueSidebar({
   queue,
@@ -104,7 +108,12 @@ function QueueSidebar({
           onClick={() => onPlaySong(queue[0])}
           className="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium flex items-center justify-center gap-2"
         >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <svg
+            className="w-5 h-5"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
             <path d="M8 5v14l11-7z" />
           </svg>
           Play Next Song
@@ -127,8 +136,7 @@ export function HomePage() {
 
   // Poll queue every 5 seconds
   useEffect(() => {
-    const fetchQueueData = () =>
-      getQueue().then(setQueue).catch(console.error);
+    const fetchQueueData = () => getQueue().then(setQueue).catch(console.error);
     fetchQueueData();
     const interval = setInterval(fetchQueueData, 5000);
     return () => clearInterval(interval);
@@ -179,7 +187,8 @@ export function HomePage() {
               Select a song to start singing
               {queue.length > 0 && (
                 <span className="text-purple-400 ml-2">
-                  ({queue.length} request{queue.length !== 1 ? "s" : ""} waiting)
+                  ({queue.length} request{queue.length !== 1 ? "s" : ""}{" "}
+                  waiting)
                 </span>
               )}
             </p>
