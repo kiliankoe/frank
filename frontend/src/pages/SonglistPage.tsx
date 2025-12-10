@@ -91,6 +91,8 @@ function ArtistSection({
   );
 }
 
+const SUBMITTER_NAME_KEY = "frank-submitter-name";
+
 function AddToQueueModal({
   song,
   onClose,
@@ -100,13 +102,16 @@ function AddToQueueModal({
   onClose: () => void;
   onSubmit: (name: string) => void;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(
+    () => localStorage.getItem(SUBMITTER_NAME_KEY) ?? "",
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setIsSubmitting(true);
+    localStorage.setItem(SUBMITTER_NAME_KEY, name.trim());
     onSubmit(name.trim());
   };
 
