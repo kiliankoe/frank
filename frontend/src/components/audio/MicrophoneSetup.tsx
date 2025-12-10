@@ -25,6 +25,22 @@ export function MicrophoneSetup() {
     }
   }, [permissionGranted, refreshMicrophones]);
 
+  // Recreate players for pre-selected microphones when mounting
+  useEffect(() => {
+    if (permissionGranted && microphones.length > 0) {
+      for (const deviceId of selectedMicrophones) {
+        // Read current state directly from store to avoid stale closure issues
+        // (React StrictMode double-invokes effects before re-render occurs)
+        const currentPlayers = useGameStore.getState().players;
+        const hasPlayer = currentPlayers.some((p) => p.microphoneId === deviceId);
+        if (!hasPlayer) {
+          const mic = microphones.find((m) => m.deviceId === deviceId);
+          addPlayer(mic?.label || "Player", deviceId);
+        }
+      }
+    }
+  }, [permissionGranted, microphones, selectedMicrophones, addPlayer]);
+
   const handleToggleMicrophone = (deviceId: string) => {
     if (selectedMicrophones.includes(deviceId)) {
       deselectMicrophone(deviceId);
