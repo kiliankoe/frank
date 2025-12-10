@@ -49,3 +49,7 @@ WASM pitch detection module (only needed if modifying):
 cd frontend/wasm
 wasm-pack build --target web
 ```
+
+## Why "Frank"?
+
+Named after a friend, Frank H., who hosted a lot of the karaoke/ultrastar nights I used to attend.
