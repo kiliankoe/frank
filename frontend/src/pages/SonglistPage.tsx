@@ -327,7 +327,6 @@ export function SonglistPage() {
       {/* Header with search */}
       <header className="sticky top-0 bg-gray-950/95 backdrop-blur border-b border-white/10 z-40">
         <div className="px-4 py-3">
-          <h1 className="text-xl font-bold text-white mb-3">Song List</h1>
           <div className="relative">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"

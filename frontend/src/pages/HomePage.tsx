@@ -179,21 +179,6 @@ export function HomePage() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex gap-8">
         <div className="flex-1 min-w-0">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">
-              Choose a Song
-            </h1>
-            <p className="text-gray-400">
-              Select a song to start singing
-              {queue.length > 0 && (
-                <span className="text-purple-400 ml-2">
-                  ({queue.length} request{queue.length !== 1 ? "s" : ""}{" "}
-                  waiting)
-                </span>
-              )}
-            </p>
-          </div>
-
           <div className="mb-6 max-w-md">
             <SongSearch />
           </div>
