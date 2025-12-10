@@ -1,10 +1,13 @@
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio_util::io::ReaderStream;
 
 use crate::error::AppError;
 use crate::song::SongSummary;
@@ -42,9 +45,11 @@ pub async fn get_song(
 }
 
 /// GET /files/:song_id/:file_type - Serve song files (audio, video, cover, background)
+/// Supports HTTP Range requests for seeking in media files
 pub async fn serve_file(
     State(state): State<AppState>,
     Path((song_id, file_type)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     let song = state
         .get_song(&song_id)
@@ -63,7 +68,9 @@ pub async fn serve_file(
         AppError::SongNotFound(format!("{} file not found for song {}", file_type, song_id))
     })?;
 
-    let content = tokio::fs::read(file_path).await?;
+    // Get file metadata for size
+    let metadata = tokio::fs::metadata(file_path).await?;
+    let file_size = metadata.len();
 
     // Determine content type from extension
     let content_type = match file_path.extension().and_then(|e| e.to_str()) {
@@ -82,9 +89,84 @@ pub async fn serve_file(
         _ => "application/octet-stream",
     };
 
-    Ok((
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, content_type)],
-        content,
-    ))
+    // Parse Range header if present
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| parse_range_header(s, file_size));
+
+    let mut file = tokio::fs::File::open(file_path).await?;
+
+    match range {
+        Some((start, end)) => {
+            // Seek to start position
+            file.seek(std::io::SeekFrom::Start(start)).await?;
+
+            // Create a limited reader for the range
+            let length = end - start + 1;
+            let limited = file.take(length);
+            let stream = ReaderStream::new(limited);
+            let body = Body::from_stream(stream);
+
+            let content_range = format!("bytes {}-{}/{}", start, end, file_size);
+
+            Ok((
+                StatusCode::PARTIAL_CONTENT,
+                [
+                    (header::CONTENT_TYPE, content_type.to_string()),
+                    (header::CONTENT_LENGTH, length.to_string()),
+                    (header::CONTENT_RANGE, content_range),
+                    (header::ACCEPT_RANGES, "bytes".to_string()),
+                ],
+                body,
+            ))
+        }
+        None => {
+            // No range requested, stream the entire file
+            let stream = ReaderStream::new(file);
+            let body = Body::from_stream(stream);
+
+            Ok((
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, content_type.to_string()),
+                    (header::CONTENT_LENGTH, file_size.to_string()),
+                    (header::ACCEPT_RANGES, "bytes".to_string()),
+                    // Dummy header to match tuple size
+                    (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+                ],
+                body,
+            ))
+        }
+    }
+}
+
+/// Parse HTTP Range header
+/// Format: "bytes=start-end" or "bytes=start-"
+fn parse_range_header(header: &str, file_size: u64) -> Option<(u64, u64)> {
+    let header = header.strip_prefix("bytes=")?;
+    let parts: Vec<&str> = header.split('-').collect();
+
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let start: u64 = parts[0].parse().ok()?;
+
+    let end: u64 = if parts[1].is_empty() {
+        // "bytes=start-" means from start to end of file
+        file_size - 1
+    } else {
+        parts[1].parse().ok()?
+    };
+
+    // Validate range
+    if start > end || start >= file_size {
+        return None;
+    }
+
+    // Clamp end to file size
+    let end = end.min(file_size - 1);
+
+    Some((start, end))
 }

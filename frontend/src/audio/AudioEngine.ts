@@ -86,6 +86,10 @@ export class AudioEngine {
     return this.audioElement ? !this.audioElement.paused : false;
   }
 
+  getAudioElement(): HTMLAudioElement | null {
+    return this.audioElement;
+  }
+
   onTimeUpdate(callback: (timeMs: number) => void): void {
     this.audioElement?.addEventListener("timeupdate", () => {
       callback(this.getCurrentTime());

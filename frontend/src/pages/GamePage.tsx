@@ -180,6 +180,7 @@ function GamePlay() {
     players,
     isLoading,
     error,
+    audioElement,
     start,
     pause,
     resume,
@@ -265,12 +266,18 @@ function GamePlay() {
 
   if (!song || !gameEngine) return null;
 
-  const noteTracker = gameEngine.getNoteTracker();
-  const visibleNotes =
-    noteTracker?.getNotesInRange(currentTimeMs - 1000, currentTimeMs + 3000) ??
-    [];
-  const nextPhrase = noteTracker?.getNextPhrase(currentTimeMs) ?? null;
-  const duration = noteTracker?.getSongDuration() ?? 0;
+  const primaryNoteTracker = gameEngine.getNoteTracker(1);
+  const nextPhrase = primaryNoteTracker?.getNextPhrase(currentTimeMs) ?? null;
+  const duration = primaryNoteTracker?.getSongDuration() ?? 0;
+
+  // Helper to get visible notes for a specific player's track
+  const getPlayerNotes = (playerId: number) => {
+    const track = gameEngine.getPlayerTrack(playerId);
+    const tracker = gameEngine.getNoteTracker(track);
+    return (
+      tracker?.getNotesInRange(currentTimeMs - 1000, currentTimeMs + 3000) ?? []
+    );
+  };
 
   const videoUrl = song.metadata.video_file
     ? getFileUrl(song.id, "video")
@@ -288,7 +295,7 @@ function GamePlay() {
         <VideoBackground
           videoUrl={videoUrl}
           backgroundUrl={backgroundUrl}
-          audioElement={null}
+          audioElement={audioElement}
           videoGap={song.metadata.video_gap ?? 0}
         />
         <div className="absolute inset-0 bg-black/40" />
@@ -325,7 +332,7 @@ function GamePlay() {
               className="h-32 bg-black/30 rounded-lg overflow-hidden"
             >
               <PitchTrack
-                notes={visibleNotes}
+                notes={getPlayerNotes(player.id)}
                 currentTimeMs={currentTimeMs}
                 playerPitch={player.currentPitch}
                 pitchHistory={player.pitchHistory}

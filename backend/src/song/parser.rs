@@ -213,13 +213,20 @@ impl Parser {
     }
 
     fn generate_id(path: &Path) -> String {
-        // Use a hash of the path for a stable ID
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        // Use FNV-1a hash for a deterministic ID that's stable across restarts
+        // FNV-1a is a simple, fast, non-cryptographic hash with good distribution
+        const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+        const FNV_PRIME: u64 = 0x100000001b3;
 
-        let mut hasher = DefaultHasher::new();
-        path.hash(&mut hasher);
-        format!("{:x}", hasher.finish())
+        let path_str = path.to_string_lossy();
+        let mut hash = FNV_OFFSET_BASIS;
+
+        for byte in path_str.bytes() {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+
+        format!("{:016x}", hash)
     }
 }
 

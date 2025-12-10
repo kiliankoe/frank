@@ -16,6 +16,7 @@ interface UseGameReturn {
   players: PlayerState[];
   isLoading: boolean;
   error: string | null;
+  audioElement: HTMLAudioElement | null;
   start: () => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -33,6 +34,9 @@ export function useGame({
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
+    null,
+  );
 
   // Initialize game engine
   useEffect(() => {
@@ -69,6 +73,7 @@ export function useGame({
       .then(() => {
         setIsLoading(false);
         setPlayers([...engine.getPlayers()]);
+        setAudioElement(engine.getAudioEngine().getAudioElement());
       })
       .catch((err) => {
         setError(err.message);
@@ -106,6 +111,7 @@ export function useGame({
     players,
     isLoading,
     error,
+    audioElement,
     start,
     pause,
     resume,
