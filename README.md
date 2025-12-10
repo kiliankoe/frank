@@ -1,4 +1,4 @@
-🧑‍🎤 Frank
+# 🧑‍🎤 Frank
 
 A browser-based karaoke game similar to UltraStar/Performous. Supports UltraStar TXT song format with real-time pitch detection via WebAssembly.
 
