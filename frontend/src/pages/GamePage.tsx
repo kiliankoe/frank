@@ -249,7 +249,26 @@ function GamePlay() {
     navigate("/results");
   }, [setGameState, navigate]);
 
-  // Keyboard shortcuts: spacebar for pause/resume, escape to exit
+  const handleSkip = useCallback(() => {
+    if (!gameEngine) return;
+
+    const currentTime = gameEngine.getCurrentTime();
+    const nextNote = gameEngine.getNextNoteAcrossAllTracks(currentTime);
+
+    if (nextNote) {
+      // Skip to 5 seconds before the next note
+      const skipToTime = Math.max(0, nextNote.startTimeMs - 5000);
+      // Only skip forward, not backward
+      if (skipToTime > currentTime) {
+        gameEngine.seekTo(skipToTime);
+      }
+    } else {
+      // No more notes, skip to results
+      handleEnd();
+    }
+  }, [gameEngine, handleEnd]);
+
+  // Keyboard shortcuts: spacebar for pause/resume, escape to exit, S to skip
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -258,12 +277,15 @@ function GamePlay() {
       } else if (e.code === "Escape") {
         e.preventDefault();
         handleEnd();
+      } else if (e.code === "KeyS") {
+        e.preventDefault();
+        handleSkip();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handlePause, handleEnd]);
+  }, [handlePause, handleEnd, handleSkip]);
 
   if (isLoading) {
     return (

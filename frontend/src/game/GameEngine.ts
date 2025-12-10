@@ -301,6 +301,29 @@ export class GameEngine {
     return this.audioEngine.getCurrentTime();
   }
 
+  seekTo(timeMs: number): void {
+    const audioElement = this.audioEngine.getAudioElement();
+    if (audioElement) {
+      audioElement.currentTime = timeMs / 1000;
+    }
+  }
+
+  /**
+   * Get the next note across all tracks after the current time
+   */
+  getNextNoteAcrossAllTracks(timeMs: number): { startTimeMs: number } | null {
+    let earliestNote: { startTimeMs: number } | null = null;
+
+    for (const tracker of this.noteTrackers.values()) {
+      const nextNote = tracker.getNextNote(timeMs);
+      if (nextNote && (!earliestNote || nextNote.startTimeMs < earliestNote.startTimeMs)) {
+        earliestNote = nextNote;
+      }
+    }
+
+    return earliestNote;
+  }
+
   getAudioEngine(): AudioEngine {
     return this.audioEngine;
   }
