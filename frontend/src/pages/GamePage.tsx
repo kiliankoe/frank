@@ -325,9 +325,20 @@ function GamePlay() {
   }, [gameState, pause, resume]);
 
   const handleEnd = useCallback(() => {
+    // Sync scores from GameEngine to store before ending
+    for (const player of players) {
+      for (const [, noteScore] of player.noteScores) {
+        useGameStore.getState().updatePlayerScore(player.id, {
+          noteIndex: noteScore.noteIndex,
+          maxPoints: noteScore.maxPoints,
+          earnedPoints: noteScore.earnedPoints,
+          accuracy: noteScore.accuracy,
+        });
+      }
+    }
     setGameState("finished");
     navigate("/results");
-  }, [setGameState, navigate]);
+  }, [players, setGameState, navigate]);
 
   const handleSkip = useCallback(() => {
     if (!gameEngine) return;

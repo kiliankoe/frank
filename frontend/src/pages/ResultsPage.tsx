@@ -1,27 +1,130 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore } from "../stores";
 import { getFileUrl } from "../api/client";
 import { getPlayerColor } from "../constants/playerColors";
 
-export function ResultsPage() {
-  const navigate = useNavigate();
-  const { song, players, gameState, resetGame } = useGameStore();
+function AnimatedScoreBar({
+  score,
+  maxScore,
+  color,
+  colorName,
+  delay,
+  duration,
+}: {
+  score: number;
+  maxScore: number;
+  color: string;
+  colorName: string;
+  delay: number;
+  duration: number;
+}) {
+  const [animatedScore, setAnimatedScore] = useState(0);
+  const [barWidth, setBarWidth] = useState(0);
 
   useEffect(() => {
-    if (!song || gameState !== "finished") {
+    const startTime = performance.now() + delay;
+    let animationFrame: number;
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      if (elapsed < 0) {
+        animationFrame = requestAnimationFrame(animate);
+        return;
+      }
+
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic for smooth deceleration
+      const eased = 1 - (1 - progress) ** 3;
+
+      setAnimatedScore(Math.round(score * eased));
+      setBarWidth((score / maxScore) * 100 * eased);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [score, maxScore, delay, duration]);
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className="w-20 text-right">
+        <span className="text-sm font-medium" style={{ color }}>
+          {colorName}
+        </span>
+      </div>
+      <div className="flex-1 h-16 bg-white/10 rounded-lg overflow-hidden relative">
+        <div
+          className="h-full rounded-lg transition-none"
+          style={{
+            width: `${barWidth}%`,
+            backgroundColor: color,
+            boxShadow: `0 0 20px ${color}40`,
+          }}
+        />
+      </div>
+      <div className="w-24 text-right">
+        <span className="text-2xl font-bold text-white">{animatedScore}</span>
+      </div>
+    </div>
+  );
+}
+
+// Debug function to assign random scores - call from browser console:
+// window.__debugRandomScores()
+if (typeof window !== "undefined") {
+  (window as unknown as { __debugRandomScores: () => void }).__debugRandomScores =
+    () => {
+      const state = useGameStore.getState();
+      for (const player of state.players) {
+        const randomScore = Math.floor(Math.random() * 10000);
+        // Reset player scores first, then add a fake note score
+        useGameStore.setState((s) => ({
+          players: s.players.map((p) =>
+            p.id === player.id
+              ? {
+                  ...p,
+                  score: randomScore,
+                  noteScores: [
+                    {
+                      noteIndex: 0,
+                      maxPoints: 10000,
+                      earnedPoints: randomScore,
+                      accuracy: randomScore / 10000,
+                    },
+                  ],
+                }
+              : p,
+          ),
+        }));
+      }
+      console.log(
+        "Random scores assigned:",
+        useGameStore.getState().players.map((p) => ({ id: p.id, score: p.score })),
+      );
+    };
+}
+
+export function ResultsPage() {
+  const navigate = useNavigate();
+  const { song, players, gameState, resetGame, restartSameSong } =
+    useGameStore();
+
+  useEffect(() => {
+    // Only redirect to home if there's no song (initial load without a game)
+    // Don't redirect on gameState change since handlePlayAgain changes it intentionally
+    if (!song && gameState !== "finished") {
       navigate("/");
     }
   }, [song, gameState, navigate]);
 
   const handlePlayAgain = () => {
-    // Keep the song, reset scores
-    const currentSong = song;
-    resetGame();
-    if (currentSong) {
-      useGameStore.getState().setSong(currentSong);
-      navigate("/play");
-    }
+    // Navigate first, then reset - this prevents the useEffect from redirecting
+    navigate("/play");
+    restartSameSong();
   };
 
   const handleNewSong = () => {
@@ -35,6 +138,13 @@ export function ResultsPage() {
 
   // Sort players by score
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+
+  // Calculate max score for bar scaling (use highest player score or a minimum)
+  const maxScore = Math.max(...players.map((p) => p.score), 1);
+
+  // Animation duration based on score - all bars animate at same rate
+  // so higher scores take longer to complete
+  const baseDuration = 2000; // 2 seconds for full animation
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-900/20 to-black">
@@ -63,59 +173,22 @@ export function ResultsPage() {
           </div>
         </div>
 
-        {/* Scores */}
-        <div className="max-w-2xl mx-auto space-y-4">
-          {sortedPlayers.map((player, index) => {
+        {/* Animated Score Bars */}
+        <div className="max-w-3xl mx-auto space-y-4 bg-white/5 rounded-xl p-6">
+          {sortedPlayers.map((player) => {
             const color = getPlayerColor(player.color);
+            // All bars animate at the same rate - higher scores take longer
+            const duration = (player.score / maxScore) * baseDuration;
             return (
-              <div
+              <AnimatedScoreBar
                 key={player.id}
-                className={`bg-white/5 rounded-lg p-6 flex items-center gap-4 ${
-                  index === 0 ? "ring-2 ring-yellow-500" : ""
-                }`}
-              >
-                {/* Rank */}
-                <div
-                  className={`text-4xl font-bold ${
-                    index === 0
-                      ? "text-yellow-500"
-                      : index === 1
-                        ? "text-gray-400"
-                        : index === 2
-                          ? "text-amber-600"
-                          : "text-gray-600"
-                  }`}
-                >
-                  #{index + 1}
-                </div>
-
-                {/* Player Color */}
-                <div className="flex items-center gap-3 flex-1">
-                  <span
-                    className="w-8 h-8 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: color.hex }}
-                  />
-                  <div>
-                    <div
-                      className="text-xl font-semibold"
-                      style={{ color: color.hex }}
-                    >
-                      {color.name}
-                    </div>
-                    <div className="text-gray-400 text-sm">
-                      {player.noteScores.length} notes scored
-                    </div>
-                  </div>
-                </div>
-
-                {/* Score */}
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-white">
-                    {player.score}
-                  </div>
-                  <div className="text-gray-400 text-sm">points</div>
-                </div>
-              </div>
+                score={player.score}
+                maxScore={maxScore}
+                color={color.hex}
+                colorName={color.name}
+                delay={500}
+                duration={duration || baseDuration}
+              />
             );
           })}
         </div>
@@ -125,14 +198,14 @@ export function ResultsPage() {
           <button
             type="button"
             onClick={handlePlayAgain}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
           >
             Play Again
           </button>
           <button
             type="button"
             onClick={handleNewSong}
-            className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
           >
             Choose New Song
           </button>

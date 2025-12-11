@@ -44,6 +44,7 @@ interface GameStoreState {
   resumeGame: () => void;
   endGame: () => void;
   resetGame: () => void;
+  restartSameSong: () => void;
 }
 
 let playerIdCounter = 0;
@@ -129,5 +130,19 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       startTime: null,
     });
     playerIdCounter = 0;
+  },
+
+  restartSameSong: () => {
+    set((state) => ({
+      gameState: "setup",
+      players: state.players.map((p) => ({
+        ...p,
+        score: 0,
+        noteScores: [],
+      })),
+      currentTime: 0,
+      currentBeat: 0,
+      startTime: null,
+    }));
   },
 }));
