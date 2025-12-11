@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useSongStore, useGameStore, useAudioStore } from "../stores";
 import { SongCarousel, SongDetailsModal } from "../components/songs";
 import { MicSettingsModal } from "../components/audio";
+import { KeyboardShortcutsModal } from "../components/KeyboardShortcutsModal";
 import { usePreview } from "../hooks/usePreview";
 import type { QueueEntry, SearchableSong, Song } from "../api/types";
 import {
@@ -189,6 +190,7 @@ export function HomePage() {
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [showMicSettings, setShowMicSettings] = useState(false);
   const [showQueueModal, setShowQueueModal] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [songForModal, setSongForModal] = useState<Song | null>(null);
@@ -238,7 +240,7 @@ export function HomePage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Handle "/" key to focus search
+  // Handle "/" key to focus search, "?" for shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "/" && !isSearchFocused) {
@@ -247,6 +249,9 @@ export function HomePage() {
       } else if (e.key === "Escape" && isSearchFocused) {
         searchInputRef.current?.blur();
         setSearchQuery("");
+      } else if (e.key === "?" && !isSearchFocused) {
+        e.preventDefault();
+        setShowShortcuts(true);
       }
     };
 
@@ -538,6 +543,35 @@ export function HomePage() {
           onCancel={() => setSongForModal(null)}
         />
       )}
+
+      {/* Keyboard shortcuts modal */}
+      <KeyboardShortcutsModal
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+        groups={[
+          {
+            title: "Navigation",
+            shortcuts: [
+              { key: "←", description: "Previous song" },
+              { key: "→", description: "Next song" },
+              { key: "Enter", description: "Select song" },
+            ],
+          },
+          {
+            title: "Search",
+            shortcuts: [
+              { key: "/", description: "Focus search" },
+              { key: "Esc", description: "Clear search / blur" },
+            ],
+          },
+          {
+            title: "General",
+            shortcuts: [
+              { key: "?", description: "Show shortcuts" },
+            ],
+          },
+        ]}
+      />
     </div>
   );
 }

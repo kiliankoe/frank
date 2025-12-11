@@ -8,6 +8,7 @@ import {
   ScoreDisplay,
   ProgressBar,
 } from "../components/game";
+import { KeyboardShortcutsModal } from "../components/KeyboardShortcutsModal";
 import { useGame } from "../hooks/useGame";
 import { getFileUrl } from "../api/client";
 import { Scorer } from "../game/Scorer";
@@ -234,6 +235,7 @@ function Countdown({ onComplete }: { onComplete: () => void }) {
 function GamePlay() {
   const navigate = useNavigate();
   const { song, players: storePlayers, setGameState } = useGameStore();
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const playerMicrophones = useMemo(() => {
     return storePlayers.map((player) => ({
@@ -359,7 +361,7 @@ function GamePlay() {
     }
   }, [gameEngine, handleEnd]);
 
-  // Keyboard shortcuts: spacebar for pause/resume, escape to exit, S to skip
+  // Keyboard shortcuts: spacebar for pause/resume, escape to exit, S to skip, ? for help
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -371,6 +373,9 @@ function GamePlay() {
       } else if (e.code === "KeyS") {
         e.preventDefault();
         handleSkip();
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((prev) => !prev);
       }
     };
 
@@ -565,6 +570,26 @@ function GamePlay() {
           <ProgressBar currentTimeMs={currentTimeMs} durationMs={duration} />
         </div>
       </div>
+
+      {/* Keyboard shortcuts modal */}
+      <KeyboardShortcutsModal
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+        groups={[
+          {
+            title: "Playback",
+            shortcuts: [
+              { key: "Space", description: "Pause / Resume" },
+              { key: "S", description: "Skip to next notes" },
+              { key: "Esc", description: "End song" },
+            ],
+          },
+          {
+            title: "General",
+            shortcuts: [{ key: "?", description: "Show shortcuts" }],
+          },
+        ]}
+      />
     </div>
   );
 }
