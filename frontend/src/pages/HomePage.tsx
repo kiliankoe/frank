@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSongStore, useGameStore, useAudioStore } from "../stores";
-import { SongCarousel } from "../components/songs/SongCarousel";
+import { SongCarousel, SongDetailsModal } from "../components/songs";
 import { MicSettingsModal } from "../components/audio";
 import { usePreview } from "../hooks/usePreview";
-import type { QueueEntry, SearchableSong } from "../api/types";
+import type { QueueEntry, SearchableSong, Song } from "../api/types";
 import {
   getQueue,
   removeFromQueue,
@@ -182,15 +182,16 @@ export function HomePage() {
     searchQuery,
     setSearchQuery,
   } = useSongStore();
-  const { setSong } = useGameStore();
+  const { setSongAndStart, addPlayer, resetGame } = useGameStore();
   const { fetchSong } = useSongStore();
-  const { micAssignments } = useAudioStore();
+  const { micAssignments, initAudio } = useAudioStore();
 
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [showMicSettings, setShowMicSettings] = useState(false);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [songForModal, setSongForModal] = useState<Song | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -253,37 +254,75 @@ export function HomePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSearchFocused, setSearchQuery]);
 
-  const handleSelectSong = useCallback(
-    async (song: SearchableSong) => {
-      await fetchSong(song.id);
+  // Open song details modal (fetch full song data first)
+  const handleOpenSongModal = useCallback(
+    async (songSummary: SearchableSong) => {
+      await fetchSong(songSummary.id);
       const fullSong = useSongStore.getState().currentSong;
       if (fullSong) {
-        setSong(fullSong);
-        await removeFromQueueBySong(song.id);
-        navigate("/play");
+        setSongForModal(fullSong);
       }
     },
-    [fetchSong, setSong, navigate],
+    [fetchSong],
   );
 
   const handleConfirmSelection = useCallback(() => {
     if (selectedSong) {
-      handleSelectSong(selectedSong);
+      handleOpenSongModal(selectedSong);
     }
-  }, [selectedSong, handleSelectSong]);
+  }, [selectedSong, handleOpenSongModal]);
+
+  // Start the game from the modal
+  const handleStartGame = useCallback(async () => {
+    if (!songForModal) return;
+
+    // Reset any previous game state
+    resetGame();
+
+    // Initialize audio
+    await initAudio();
+
+    // Determine max players based on whether it's a duet
+    const isDuet = Boolean(
+      songForModal.notes_p2 && songForModal.notes_p2.length > 0,
+    );
+    const maxPlayers = isDuet ? 2 : 4;
+
+    // Create players from mic assignments
+    const assignmentsToUse = micAssignments.slice(0, maxPlayers);
+    for (const assignment of assignmentsToUse) {
+      addPlayer(assignment.colorId, assignment.deviceId);
+    }
+
+    // Set song and start countdown
+    setSongAndStart(songForModal);
+
+    // Remove from queue if this song was requested
+    await removeFromQueueBySong(songForModal.id);
+
+    // Close modal and navigate
+    setSongForModal(null);
+    navigate("/play");
+  }, [
+    songForModal,
+    resetGame,
+    initAudio,
+    micAssignments,
+    addPlayer,
+    setSongAndStart,
+    navigate,
+  ]);
 
   const handlePlayFromQueue = useCallback(
     async (entry: QueueEntry) => {
       await fetchSong(entry.song_id);
       const song = useSongStore.getState().currentSong;
       if (song) {
-        setSong(song);
-        await removeFromQueue(entry.id);
         setShowQueueModal(false);
-        navigate("/play");
+        setSongForModal(song);
       }
     },
-    [fetchSong, setSong, navigate],
+    [fetchSong],
   );
 
   const handleRemoveFromQueue = useCallback(async (entryId: number) => {
@@ -480,6 +519,15 @@ export function HomePage() {
         isOpen={showMicSettings}
         onClose={() => setShowMicSettings(false)}
       />
+
+      {/* Song details modal */}
+      {songForModal && (
+        <SongDetailsModal
+          song={songForModal}
+          onStart={handleStartGame}
+          onCancel={() => setSongForModal(null)}
+        />
+      )}
     </div>
   );
 }

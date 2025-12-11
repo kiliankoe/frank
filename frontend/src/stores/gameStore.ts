@@ -33,6 +33,7 @@ interface GameStoreState {
   startTime: number | null;
 
   setSong: (song: Song) => void;
+  setSongAndStart: (song: Song) => void;
   setGameState: (state: GameState) => void;
   addPlayer: (color: string, microphoneId?: string) => void;
   removePlayer: (id: number) => void;
@@ -58,6 +59,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   startTime: null,
 
   setSong: (song) => set({ song, gameState: "setup" }),
+
+  setSongAndStart: (song) =>
+    set({
+      song,
+      gameState: "countdown",
+      startTime: null,
+      currentTime: 0,
+      currentBeat: 0,
+    }),
 
   setGameState: (gameState) => set({ gameState }),
 
