@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { Song } from "../../api/types";
 import { getFileUrl } from "../../api/client";
 import { useAudioStore } from "../../stores";
@@ -23,6 +24,22 @@ export function SongDetailsModal({
 
   // Get configured players (limited by maxPlayers)
   const activePlayers = micAssignments.slice(0, maxPlayers);
+
+  // Handle Enter key to start, Escape to cancel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && activePlayers.length > 0) {
+        e.preventDefault();
+        onStart();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onStart, onCancel, activePlayers.length]);
 
   // Calculate note count
   const noteCount =

@@ -369,6 +369,16 @@ export function HomePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && selectedSong) {
+                e.preventDefault();
+                searchInputRef.current?.blur();
+                handleConfirmSelection();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                searchInputRef.current?.blur();
+              }
+            }}
             placeholder="Search songs..."
             className="w-full bg-black/40 backdrop-blur-md border border-white/20 rounded-full px-5 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
