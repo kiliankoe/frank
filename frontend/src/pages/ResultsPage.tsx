@@ -76,36 +76,39 @@ function AnimatedScoreBar({
 // Debug function to assign random scores - call from browser console:
 // window.__debugRandomScores()
 if (typeof window !== "undefined") {
-  (window as unknown as { __debugRandomScores: () => void }).__debugRandomScores =
-    () => {
-      const state = useGameStore.getState();
-      for (const player of state.players) {
-        const randomScore = Math.floor(Math.random() * 10000);
-        // Reset player scores first, then add a fake note score
-        useGameStore.setState((s) => ({
-          players: s.players.map((p) =>
-            p.id === player.id
-              ? {
-                  ...p,
-                  score: randomScore,
-                  noteScores: [
-                    {
-                      noteIndex: 0,
-                      maxPoints: 10000,
-                      earnedPoints: randomScore,
-                      accuracy: randomScore / 10000,
-                    },
-                  ],
-                }
-              : p,
-          ),
-        }));
-      }
-      console.log(
-        "Random scores assigned:",
-        useGameStore.getState().players.map((p) => ({ id: p.id, score: p.score })),
-      );
-    };
+  (
+    window as unknown as { __debugRandomScores: () => void }
+  ).__debugRandomScores = () => {
+    const state = useGameStore.getState();
+    for (const player of state.players) {
+      const randomScore = Math.floor(Math.random() * 10000);
+      // Reset player scores first, then add a fake note score
+      useGameStore.setState((s) => ({
+        players: s.players.map((p) =>
+          p.id === player.id
+            ? {
+                ...p,
+                score: randomScore,
+                noteScores: [
+                  {
+                    noteIndex: 0,
+                    maxPoints: 10000,
+                    earnedPoints: randomScore,
+                    accuracy: randomScore / 10000,
+                  },
+                ],
+              }
+            : p,
+        ),
+      }));
+    }
+    console.log(
+      "Random scores assigned:",
+      useGameStore
+        .getState()
+        .players.map((p) => ({ id: p.id, score: p.score })),
+    );
+  };
 }
 
 export function ResultsPage() {

@@ -45,7 +45,7 @@ function GameSetup() {
       for (const assignment of assignmentsToUse) {
         const currentPlayers = useGameStore.getState().players;
         const hasPlayer = currentPlayers.some(
-          (p) => p.microphoneId === assignment.deviceId
+          (p) => p.microphoneId === assignment.deviceId,
         );
         if (!hasPlayer) {
           addPlayer(assignment.colorId, assignment.deviceId);

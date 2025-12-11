@@ -4,7 +4,7 @@ import { PLAYER_COLORS, getPlayerColor } from "../../constants/playerColors";
 
 function useMicLevels(
   microphones: { deviceId: string; label: string }[],
-  isOpen: boolean
+  isOpen: boolean,
 ) {
   const [levels, setLevels] = useState<Map<string, number>>(new Map());
   const streamsRef = useRef<Map<string, MediaStream>>(new Map());
@@ -28,7 +28,10 @@ function useMicLevels(
 
     const setupMics = async () => {
       // Create audio context if needed
-      if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+      if (
+        !audioContextRef.current ||
+        audioContextRef.current.state === "closed"
+      ) {
         audioContextRef.current = new AudioContext();
       }
       const ctx = audioContextRef.current;
@@ -175,7 +178,9 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bg-gray-900 rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">Microphone Settings</h2>
+          <h2 className="text-xl font-semibold text-white">
+            Microphone Settings
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -216,7 +221,8 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
         ) : (
           <div className="space-y-4">
             <p className="text-gray-400 text-sm mb-4">
-              Assign a color to each microphone. Speak into a mic to see its level.
+              Assign a color to each microphone. Speak into a mic to see its
+              level.
             </p>
 
             {microphones.map((mic) => {
@@ -224,15 +230,14 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
               const assignedColor = getAssignedColor(mic.deviceId);
 
               return (
-                <div
-                  key={mic.deviceId}
-                  className="bg-white/5 rounded-lg p-4"
-                >
+                <div key={mic.deviceId} className="bg-white/5 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-3">
                     {assignedColor && (
                       <span
                         className="w-4 h-4 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: getPlayerColor(assignedColor).hex }}
+                        style={{
+                          backgroundColor: getPlayerColor(assignedColor).hex,
+                        }}
                       />
                     )}
                     <span className="text-white text-sm truncate flex-1">
@@ -260,7 +265,9 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
                         <button
                           key={color.id}
                           type="button"
-                          onClick={() => handleColorClick(mic.deviceId, color.id)}
+                          onClick={() =>
+                            handleColorClick(mic.deviceId, color.id)
+                          }
                           className={`w-10 h-10 rounded-full transition-all ${
                             isThisMicColor
                               ? "ring-2 ring-white ring-offset-2 ring-offset-gray-900 scale-110"

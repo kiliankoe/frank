@@ -13,7 +13,5 @@ export const PLAYER_COLORS: PlayerColor[] = [
 ];
 
 export function getPlayerColor(colorId: string): PlayerColor {
-  return (
-    PLAYER_COLORS.find((c) => c.id === colorId) ?? PLAYER_COLORS[0]
-  );
+  return PLAYER_COLORS.find((c) => c.id === colorId) ?? PLAYER_COLORS[0];
 }

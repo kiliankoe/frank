@@ -53,6 +53,12 @@ export interface SongSummary {
   cover_url?: string;
 }
 
+// Extended type with pre-computed lowercase fields for efficient search
+export interface SearchableSong extends SongSummary {
+  _searchTitle: string;
+  _searchArtist: string;
+}
+
 export interface QueueEntry {
   id: number;
   song_id: string;

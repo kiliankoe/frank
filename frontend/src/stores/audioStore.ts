@@ -90,7 +90,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     const validDeviceIds = new Set(microphones.map((m) => m.deviceId));
     const currentAssignments = get().micAssignments;
     const validAssignments = currentAssignments.filter((a) =>
-      validDeviceIds.has(a.deviceId)
+      validDeviceIds.has(a.deviceId),
     );
 
     if (validAssignments.length !== currentAssignments.length) {
@@ -105,7 +105,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     set((state) => {
       // Remove any existing assignment for this color or this mic
       const filtered = state.micAssignments.filter(
-        (a) => a.deviceId !== deviceId && a.colorId !== colorId
+        (a) => a.deviceId !== deviceId && a.colorId !== colorId,
       );
       const newAssignments = [...filtered, { deviceId, colorId }];
       saveMicAssignments(newAssignments);
@@ -116,7 +116,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   unassignMic: (deviceId) => {
     set((state) => {
       const newAssignments = state.micAssignments.filter(
-        (a) => a.deviceId !== deviceId
+        (a) => a.deviceId !== deviceId,
       );
       saveMicAssignments(newAssignments);
       return { micAssignments: newAssignments };
