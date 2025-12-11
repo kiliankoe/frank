@@ -1,1 +1,1 @@
-export { MicrophoneSetup } from "./MicrophoneSetup";
+export { MicSettingsModal } from "./MicSettingsModal";

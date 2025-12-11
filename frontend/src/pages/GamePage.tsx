@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore, useAudioStore } from "../stores";
-import { MicrophoneSetup } from "../components/audio";
 import {
   LyricsDisplay,
   PitchTrack,
@@ -12,23 +11,62 @@ import {
 import { useGame } from "../hooks/useGame";
 import { getFileUrl } from "../api/client";
 import { Scorer } from "../game/Scorer";
+import { getPlayerColor } from "../constants/playerColors";
 
 function GameSetup() {
   const navigate = useNavigate();
-  const { song, setGameState } = useGameStore();
-  const { selectedMicrophones, initAudio } = useAudioStore();
+  const { song, setGameState, addPlayer, players } = useGameStore();
+  const { initAudio, refreshMicrophones, permissionGranted } = useAudioStore();
 
+  // Check if this is a duet song
+  const isDuet = Boolean(song?.notes_p2 && song.notes_p2.length > 0);
+  const maxPlayers = isDuet ? 2 : 4;
+
+  // Refresh mics and create players from assignments on mount
   useEffect(() => {
     if (!song) {
       navigate("/");
       return;
     }
-    initAudio();
-  }, [song, navigate, initAudio]);
+
+    const setup = async () => {
+      await initAudio();
+
+      // Refresh mics to clean up stale device IDs
+      if (permissionGranted) {
+        await refreshMicrophones();
+      }
+
+      // Create players from mic assignments (limit to maxPlayers)
+      // Re-read assignments after refresh to get cleaned-up list
+      const currentAssignments = useAudioStore.getState().micAssignments;
+      const assignmentsToUse = currentAssignments.slice(0, maxPlayers);
+
+      for (const assignment of assignmentsToUse) {
+        const currentPlayers = useGameStore.getState().players;
+        const hasPlayer = currentPlayers.some(
+          (p) => p.microphoneId === assignment.deviceId
+        );
+        if (!hasPlayer) {
+          addPlayer(assignment.colorId, assignment.deviceId);
+        }
+      }
+    };
+
+    setup();
+  }, [
+    song,
+    navigate,
+    initAudio,
+    refreshMicrophones,
+    permissionGranted,
+    maxPlayers,
+    addPlayer,
+  ]);
 
   const handleStart = () => {
-    if (selectedMicrophones.length === 0) {
-      alert("Please select at least one microphone");
+    if (players.length === 0) {
+      alert("Please configure microphones from the home page first");
       return;
     }
     setGameState("countdown");
@@ -65,7 +103,7 @@ function GameSetup() {
         Back to Songs
       </button>
 
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className="max-w-2xl mx-auto">
         <div className="bg-white/5 rounded-lg p-6">
           <div className="flex gap-4">
             <img
@@ -101,31 +139,65 @@ function GameSetup() {
                 {Math.round(song.metadata.bpm * 4)}
               </span>
             </div>
-            {song.notes_p2 && (
+            {isDuet && (
               <div className="col-span-2">
-                <span className="text-pink-400">Duet Mode Available</span>
+                <span className="text-pink-400">Duet Mode</span>
               </div>
             )}
           </div>
         </div>
 
-        <MicrophoneSetup />
-      </div>
+        {/* Players section */}
+        <div className="mt-6 bg-white/5 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-white mb-4">Players</h2>
+          {players.length > 0 ? (
+            <div className="flex gap-4">
+              {players.map((player, index) => {
+                const color = getPlayerColor(player.color);
+                return (
+                  <div
+                    key={player.id}
+                    className="flex items-center gap-3 bg-white/5 rounded-lg px-4 py-3"
+                  >
+                    <span
+                      className="w-6 h-6 rounded-full"
+                      style={{ backgroundColor: color.hex }}
+                    />
+                    <span className="text-white font-medium">
+                      {isDuet
+                        ? index === 0
+                          ? (song.metadata.duet_singer_p1 ?? "P1")
+                          : (song.metadata.duet_singer_p2 ?? "P2")
+                        : color.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-gray-400 mb-2">No microphones configured</p>
+              <button
+                type="button"
+                onClick={handleBack}
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Go back and set up microphones
+              </button>
+            </div>
+          )}
+        </div>
 
-      <div className="mt-8 text-center">
-        <button
-          type="button"
-          onClick={handleStart}
-          disabled={selectedMicrophones.length === 0}
-          className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-lg text-xl font-semibold transition-colors"
-        >
-          Start Singing
-        </button>
-        {selectedMicrophones.length === 0 && (
-          <p className="text-gray-400 mt-2">
-            Select at least one microphone to start
-          </p>
-        )}
+        <div className="mt-8 text-center">
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={players.length === 0}
+            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-lg text-xl font-semibold transition-colors"
+          >
+            Start Singing
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -162,15 +234,14 @@ function Countdown({ onComplete }: { onComplete: () => void }) {
 function GamePlay() {
   const navigate = useNavigate();
   const { song, players: storePlayers, setGameState } = useGameStore();
-  const { selectedMicrophones } = useAudioStore();
 
   const playerMicrophones = useMemo(() => {
-    return storePlayers.map((player, index) => ({
+    return storePlayers.map((player) => ({
       id: player.id,
-      microphoneId: player.microphoneId || selectedMicrophones[index] || "",
-      name: player.name,
+      microphoneId: player.microphoneId ?? "",
+      color: player.color,
     }));
-  }, [storePlayers, selectedMicrophones]);
+  }, [storePlayers]);
 
   const {
     gameEngine,
@@ -201,6 +272,15 @@ function GamePlay() {
       song?.notes_p2 ? scorer.calculateMaxScore(song.notes_p2) : maxScoreP1,
     [song, scorer, maxScoreP1],
   );
+
+  // Get player colors from their store data
+  const playerColorMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const sp of storePlayers) {
+      map.set(sp.id, getPlayerColor(sp.color).hex);
+    }
+    return map;
+  }, [storePlayers]);
 
   // Helper to get max score for a player based on their track
   const getPlayerMaxScore = (playerId: number) => {
@@ -348,8 +428,6 @@ function GamePlay() {
     ? getFileUrl(song.id, "background")
     : null;
 
-  const playerColors = ["#a855f7", "#ec4899", "#3b82f6", "#10b981"];
-
   return (
     <div className="fixed inset-0 bg-black flex flex-col overflow-hidden">
       {/* Video/Background */}
@@ -375,13 +453,10 @@ function GamePlay() {
           </div>
           <div className="flex items-start gap-4">
             <ScoreDisplay
-              players={players.map((p, i) => ({
+              players={players.map((p) => ({
                 id: p.id,
-                name:
-                  storePlayers.find((sp) => sp.id === p.id)?.name ??
-                  `Player ${i + 1}`,
                 score: p.score,
-                color: playerColors[i % playerColors.length],
+                color: playerColorMap.get(p.id) ?? "#a855f7",
                 maxScore: getPlayerMaxScore(p.id),
               }))}
             />
@@ -441,7 +516,7 @@ function GamePlay() {
 
         {/* Pitch tracks */}
         <div className="flex-1 px-4 space-y-2">
-          {players.map((player, index) => (
+          {players.map((player) => (
             <div
               key={player.id}
               className="h-32 bg-black/30 rounded-lg overflow-hidden"
@@ -451,7 +526,7 @@ function GamePlay() {
                 currentTimeMs={currentTimeMs}
                 playerPitch={player.currentPitch}
                 pitchHistory={player.pitchHistory}
-                playerColor={playerColors[index % playerColors.length]}
+                playerColor={playerColorMap.get(player.id) ?? "#a855f7"}
               />
             </div>
           ))}

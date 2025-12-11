@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSongStore, useGameStore } from "../stores";
+import { useSongStore, useGameStore, useAudioStore } from "../stores";
 import { SongSearch, SongList } from "../components/songs";
+import { MicSettingsModal } from "../components/audio";
 import type { QueueEntry, SongSummary } from "../api/types";
 import {
   getQueue,
   removeFromQueue,
   removeFromQueueBySong,
 } from "../api/client";
+import { getPlayerColor } from "../constants/playerColors";
 
 function QueueSidebar({
   queue,
@@ -128,7 +130,9 @@ export function HomePage() {
   const { songs, isLoading, error, fetchSongs } = useSongStore();
   const { setSong } = useGameStore();
   const { fetchSong } = useSongStore();
+  const { micAssignments } = useAudioStore();
   const [queue, setQueue] = useState<QueueEntry[]>([]);
+  const [showMicSettings, setShowMicSettings] = useState(false);
 
   useEffect(() => {
     fetchSongs();
@@ -177,6 +181,66 @@ export function HomePage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Settings button - top right */}
+      <div className="flex justify-end mb-4">
+        <button
+          type="button"
+          onClick={() => setShowMicSettings(true)}
+          className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+        >
+          {/* Show assigned mic colors */}
+          {micAssignments.length > 0 ? (
+            <div className="flex -space-x-1">
+              {micAssignments.map((assignment) => (
+                <span
+                  key={assignment.colorId}
+                  className="w-4 h-4 rounded-full ring-2 ring-gray-900"
+                  style={{ backgroundColor: getPlayerColor(assignment.colorId).hex }}
+                />
+              ))}
+            </div>
+          ) : (
+            <svg
+              className="w-5 h-5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+              />
+            </svg>
+          )}
+          <span className="text-gray-300 text-sm">
+            {micAssignments.length > 0 ? `${micAssignments.length} mic${micAssignments.length > 1 ? "s" : ""}` : "Setup Mics"}
+          </span>
+          <svg
+            className="w-4 h-4 text-gray-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+            />
+          </svg>
+        </button>
+      </div>
+
       <div className="flex gap-8">
         <div className="flex-1 min-w-0">
           <div className="mb-6 max-w-md">
@@ -202,6 +266,11 @@ export function HomePage() {
           onRemove={handleRemoveFromQueue}
         />
       </div>
+
+      <MicSettingsModal
+        isOpen={showMicSettings}
+        onClose={() => setShowMicSettings(false)}
+      />
     </div>
   );
 }

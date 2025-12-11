@@ -28,6 +28,7 @@ export function useGame({
   playerMicrophones,
 }: UseGameOptions): UseGameReturn {
   const engineRef = useRef<GameEngine | null>(null);
+  const isInitializedRef = useRef(false);
   const [gameState, setGameState] = useState<GameEngineState>("idle");
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [currentPhrase, setCurrentPhrase] = useState<Phrase | null>(null);
@@ -38,10 +39,21 @@ export function useGame({
     null,
   );
 
-  // Initialize game engine
+  // Initialize game engine - only run once per song/players combination
   useEffect(() => {
+    // Skip if already initialized with same configuration
+    if (isInitializedRef.current && engineRef.current) {
+      return;
+    }
+
+    // Clean up any existing engine
+    if (engineRef.current) {
+      engineRef.current.dispose();
+    }
+
     const engine = new GameEngine();
     engineRef.current = engine;
+    isInitializedRef.current = true;
 
     engine.setCallbacks({
       onStateChange: setGameState,
@@ -50,14 +62,19 @@ export function useGame({
       },
       onPhraseChange: setCurrentPhrase,
       onPitchUpdate: () => {
-        // Update players state to trigger re-render with new pitch
-        setPlayers([...engine.getPlayers()]);
+        if (engineRef.current) {
+          setPlayers([...engineRef.current.getPlayers()]);
+        }
       },
       onNoteComplete: () => {
-        setPlayers([...engine.getPlayers()]);
+        if (engineRef.current) {
+          setPlayers([...engineRef.current.getPlayers()]);
+        }
       },
       onGameEnd: () => {
-        setPlayers([...engine.getPlayers()]);
+        if (engineRef.current) {
+          setPlayers([...engineRef.current.getPlayers()]);
+        }
       },
     });
 
@@ -82,7 +99,11 @@ export function useGame({
       });
 
     return () => {
-      engine.dispose();
+      isInitializedRef.current = false;
+      if (engineRef.current) {
+        engineRef.current.dispose();
+        engineRef.current = null;
+      }
     };
   }, [song, playerMicrophones]);
 

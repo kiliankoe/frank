@@ -126,7 +126,11 @@ export class GameEngine {
     const micManager = this.audioEngine.getMicrophoneManager();
 
     for (const player of this.players.values()) {
-      await micManager.connectMicrophone(player.microphoneId);
+      try {
+        await micManager.connectMicrophone(player.microphoneId);
+      } catch (err) {
+        console.error("Failed to connect mic for player", player.id, err);
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameStore } from "../stores";
 import { getFileUrl } from "../api/client";
+import { getPlayerColor } from "../constants/playerColors";
 
 export function ResultsPage() {
   const navigate = useNavigate();
@@ -64,47 +65,59 @@ export function ResultsPage() {
 
         {/* Scores */}
         <div className="max-w-2xl mx-auto space-y-4">
-          {sortedPlayers.map((player, index) => (
-            <div
-              key={player.id}
-              className={`bg-white/5 rounded-lg p-6 flex items-center gap-4 ${
-                index === 0 ? "ring-2 ring-yellow-500" : ""
-              }`}
-            >
-              {/* Rank */}
+          {sortedPlayers.map((player, index) => {
+            const color = getPlayerColor(player.color);
+            return (
               <div
-                className={`text-4xl font-bold ${
-                  index === 0
-                    ? "text-yellow-500"
-                    : index === 1
-                      ? "text-gray-400"
-                      : index === 2
-                        ? "text-amber-600"
-                        : "text-gray-600"
+                key={player.id}
+                className={`bg-white/5 rounded-lg p-6 flex items-center gap-4 ${
+                  index === 0 ? "ring-2 ring-yellow-500" : ""
                 }`}
               >
-                #{index + 1}
-              </div>
+                {/* Rank */}
+                <div
+                  className={`text-4xl font-bold ${
+                    index === 0
+                      ? "text-yellow-500"
+                      : index === 1
+                        ? "text-gray-400"
+                        : index === 2
+                          ? "text-amber-600"
+                          : "text-gray-600"
+                  }`}
+                >
+                  #{index + 1}
+                </div>
 
-              {/* Player Info */}
-              <div className="flex-1">
-                <div className="text-xl font-semibold text-white">
-                  {player.name}
+                {/* Player Color */}
+                <div className="flex items-center gap-3 flex-1">
+                  <span
+                    className="w-8 h-8 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: color.hex }}
+                  />
+                  <div>
+                    <div
+                      className="text-xl font-semibold"
+                      style={{ color: color.hex }}
+                    >
+                      {color.name}
+                    </div>
+                    <div className="text-gray-400 text-sm">
+                      {player.noteScores.length} notes scored
+                    </div>
+                  </div>
                 </div>
-                <div className="text-gray-400 text-sm">
-                  {player.noteScores.length} notes scored
-                </div>
-              </div>
 
-              {/* Score */}
-              <div className="text-right">
-                <div className="text-3xl font-bold text-white">
-                  {player.score}
+                {/* Score */}
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-white">
+                    {player.score}
+                  </div>
+                  <div className="text-gray-400 text-sm">points</div>
                 </div>
-                <div className="text-gray-400 text-sm">points</div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Actions */}

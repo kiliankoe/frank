@@ -11,7 +11,7 @@ export type GameState =
 
 export interface Player {
   id: number;
-  name: string;
+  color: string; // Color ID from playerColors constants
   microphoneId?: string;
   score: number;
   noteScores: NoteScore[];
@@ -34,7 +34,7 @@ interface GameStoreState {
 
   setSong: (song: Song) => void;
   setGameState: (state: GameState) => void;
-  addPlayer: (name: string, microphoneId?: string) => void;
+  addPlayer: (color: string, microphoneId?: string) => void;
   removePlayer: (id: number) => void;
   updatePlayerScore: (playerId: number, noteScore: NoteScore) => void;
   setCurrentTime: (time: number) => void;
@@ -60,12 +60,12 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   setGameState: (gameState) => set({ gameState }),
 
-  addPlayer: (name, microphoneId) => {
+  addPlayer: (color, microphoneId) => {
     const id = ++playerIdCounter;
     set((state) => ({
       players: [
         ...state.players,
-        { id, name, microphoneId, score: 0, noteScores: [] },
+        { id, color, microphoneId, score: 0, noteScores: [] },
       ],
     }));
   },

@@ -5,25 +5,52 @@ export interface Microphone {
   label: string;
 }
 
+// Persisted mic-to-color assignments
+interface MicColorAssignment {
+  deviceId: string;
+  colorId: string;
+}
+
+const STORAGE_KEY = "frank-mic-assignments";
+
+function loadMicAssignments(): MicColorAssignment[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return [];
+}
+
+function saveMicAssignments(assignments: MicColorAssignment[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(assignments));
+}
+
 interface AudioState {
   audioContext: AudioContext | null;
   microphones: Microphone[];
-  selectedMicrophones: string[];
+  micAssignments: MicColorAssignment[];
   permissionGranted: boolean;
   isInitialized: boolean;
 
   initAudio: () => Promise<void>;
   requestMicrophonePermission: () => Promise<void>;
   refreshMicrophones: () => Promise<void>;
-  selectMicrophone: (deviceId: string) => void;
-  deselectMicrophone: (deviceId: string) => void;
+  assignMicColor: (deviceId: string, colorId: string) => void;
+  unassignMic: (deviceId: string) => void;
+  getMicByColor: (colorId: string) => Microphone | undefined;
+  getColorByMic: (deviceId: string) => string | undefined;
+  getAssignedMics: () => MicColorAssignment[];
   getAudioContext: () => AudioContext;
 }
 
 export const useAudioStore = create<AudioState>((set, get) => ({
   audioContext: null,
   microphones: [],
-  selectedMicrophones: [],
+  micAssignments: loadMicAssignments(),
   permissionGranted: false,
   isInitialized: false,
 
@@ -58,23 +85,58 @@ export const useAudioStore = create<AudioState>((set, get) => ({
         deviceId: device.deviceId,
         label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
       }));
-    set({ microphones });
+
+    // Clean up stale assignments (device IDs that no longer exist)
+    const validDeviceIds = new Set(microphones.map((m) => m.deviceId));
+    const currentAssignments = get().micAssignments;
+    const validAssignments = currentAssignments.filter((a) =>
+      validDeviceIds.has(a.deviceId)
+    );
+
+    if (validAssignments.length !== currentAssignments.length) {
+      saveMicAssignments(validAssignments);
+      set({ microphones, micAssignments: validAssignments });
+    } else {
+      set({ microphones });
+    }
   },
 
-  selectMicrophone: (deviceId) => {
-    set((state) => ({
-      selectedMicrophones: state.selectedMicrophones.includes(deviceId)
-        ? state.selectedMicrophones
-        : [...state.selectedMicrophones, deviceId],
-    }));
+  assignMicColor: (deviceId, colorId) => {
+    set((state) => {
+      // Remove any existing assignment for this color or this mic
+      const filtered = state.micAssignments.filter(
+        (a) => a.deviceId !== deviceId && a.colorId !== colorId
+      );
+      const newAssignments = [...filtered, { deviceId, colorId }];
+      saveMicAssignments(newAssignments);
+      return { micAssignments: newAssignments };
+    });
   },
 
-  deselectMicrophone: (deviceId) => {
-    set((state) => ({
-      selectedMicrophones: state.selectedMicrophones.filter(
-        (id) => id !== deviceId,
-      ),
-    }));
+  unassignMic: (deviceId) => {
+    set((state) => {
+      const newAssignments = state.micAssignments.filter(
+        (a) => a.deviceId !== deviceId
+      );
+      saveMicAssignments(newAssignments);
+      return { micAssignments: newAssignments };
+    });
+  },
+
+  getMicByColor: (colorId) => {
+    const { microphones, micAssignments } = get();
+    const assignment = micAssignments.find((a) => a.colorId === colorId);
+    if (!assignment) return undefined;
+    return microphones.find((m) => m.deviceId === assignment.deviceId);
+  },
+
+  getColorByMic: (deviceId) => {
+    const { micAssignments } = get();
+    return micAssignments.find((a) => a.deviceId === deviceId)?.colorId;
+  },
+
+  getAssignedMics: () => {
+    return get().micAssignments;
   },
 
   getAudioContext: () => {

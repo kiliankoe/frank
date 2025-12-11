@@ -68,9 +68,10 @@ export class MicrophoneManager {
 			return existing;
 		}
 
+		// Use 'ideal' instead of 'exact' to be more forgiving if deviceId changed
 		const stream = await navigator.mediaDevices.getUserMedia({
 			audio: {
-				deviceId: { exact: deviceId },
+				deviceId: { ideal: deviceId },
 				echoCancellation: false,
 				noiseSuppression: false,
 				autoGainControl: false,
