@@ -66,7 +66,7 @@ export function LyricsDisplay({
   // Single player / non-duet display
   if (!isDuet) {
     return (
-      <div className="text-center py-8 space-y-4">
+      <div className="text-center py-8 space-y-4 bg-black/50 backdrop-blur-md rounded-xl px-6">
         {renderPhrase(currentPhrase, true)}
         {nextPhrase && (
           <div className="mt-6">{renderPhrase(nextPhrase, false)}</div>
@@ -77,7 +77,7 @@ export function LyricsDisplay({
 
   // Duet display - show both tracks
   return (
-    <div className="py-4 space-y-2">
+    <div className="py-4 space-y-2 bg-black/50 backdrop-blur-md rounded-xl px-6">
       {/* P1 lyrics */}
       <div className="text-center">
         {singerP1 && (
