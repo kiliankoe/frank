@@ -1,9 +1,3 @@
-mod api;
-mod config;
-mod error;
-mod song;
-mod state;
-
 use axum::{
     routing::{delete, get},
     Router,
@@ -14,9 +8,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::config::Config;
-use crate::song::{LineBreak, Note, NoteType, Song, SongMetadata, SongSummary};
-use crate::state::{AppState, QueueEntry};
+use frank::api;
+use frank::config::Config;
+use frank::song::{LineBreak, Note, NoteType, Song, SongMetadata, SongSummary};
+use frank::state::{AppState, QueueEntry};
 
 #[derive(OpenApi)]
 #[openapi(

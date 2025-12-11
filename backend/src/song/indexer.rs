@@ -1,8 +1,9 @@
 use crate::error::{AppError, Result};
 use crate::song::parser::Parser;
 use crate::song::types::{Song, SongFiles};
+use rayon::prelude::*;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 /// Indexes songs from a directory
@@ -10,20 +11,47 @@ pub struct Indexer;
 
 impl Indexer {
     /// Scan a directory recursively and index all UltraStar TXT files
+    /// Uses parallel processing to speed up indexing of large song libraries
     pub fn scan_directory(path: &Path) -> Result<HashMap<String, Song>> {
-        let mut songs = HashMap::new();
-
         if !path.exists() {
             warn!("Songs directory does not exist: {:?}", path);
-            return Ok(songs);
+            return Ok(HashMap::new());
         }
 
-        Self::scan_recursive(path, &mut songs)?;
+        // Phase 1: Collect all txt file paths (fast, single-threaded)
+        let txt_files = Self::collect_txt_files(path)?;
+        info!("Found {} txt files to index", txt_files.len());
+
+        // Phase 2: Parse all songs in parallel
+        let songs: HashMap<String, Song> = txt_files
+            .par_iter()
+            .filter_map(|file_path| match Self::index_song(file_path) {
+                Ok(song) => {
+                    info!(
+                        "Indexed: {} - {}",
+                        song.metadata.artist, song.metadata.title
+                    );
+                    Some((song.id.clone(), song))
+                }
+                Err(e) => {
+                    warn!("Failed to parse {:?}: {}", file_path, e);
+                    None
+                }
+            })
+            .collect();
+
         info!("Indexed {} songs from {:?}", songs.len(), path);
         Ok(songs)
     }
 
-    fn scan_recursive(path: &Path, songs: &mut HashMap<String, Song>) -> Result<()> {
+    /// Recursively collect all .txt file paths
+    fn collect_txt_files(path: &Path) -> Result<Vec<PathBuf>> {
+        let mut files = Vec::new();
+        Self::collect_txt_files_recursive(path, &mut files)?;
+        Ok(files)
+    }
+
+    fn collect_txt_files_recursive(path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         let entries = std::fs::read_dir(path)?;
 
         for entry in entries {
@@ -31,33 +59,23 @@ impl Indexer {
             let file_path = entry.path();
 
             if file_path.is_dir() {
-                Self::scan_recursive(&file_path, songs)?;
+                Self::collect_txt_files_recursive(&file_path, files)?;
             } else if Self::is_ultrastar_file(&file_path) {
-                match Self::index_song(&file_path) {
-                    Ok(song) => {
-                        info!(
-                            "Indexed: {} - {}",
-                            song.metadata.artist, song.metadata.title
-                        );
-                        songs.insert(song.id.clone(), song);
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse {:?}: {}", file_path, e);
-                    }
-                }
+                files.push(file_path);
             }
         }
 
         Ok(())
     }
 
-    fn is_ultrastar_file(path: &Path) -> bool {
+    pub fn is_ultrastar_file(path: &Path) -> bool {
         path.extension()
             .map(|ext| ext.eq_ignore_ascii_case("txt"))
             .unwrap_or(false)
     }
 
-    fn index_song(txt_path: &Path) -> Result<Song> {
+    /// Read file content, handling encoding issues
+    pub fn read_song_content(txt_path: &Path) -> Result<String> {
         let content = std::fs::read_to_string(txt_path)?;
 
         // Try to detect encoding issues and re-read if necessary
@@ -70,6 +88,11 @@ impl Indexer {
             content
         };
 
+        Ok(content)
+    }
+
+    pub fn index_song(txt_path: &Path) -> Result<Song> {
+        let content = Self::read_song_content(txt_path)?;
         let mut song = Parser::parse(&content, txt_path)?;
 
         // Resolve file paths
