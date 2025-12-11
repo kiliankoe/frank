@@ -127,7 +127,8 @@ export class GameEngine {
 
     for (const player of this.players.values()) {
       try {
-        await micManager.connectMicrophone(player.microphoneId);
+        // microphoneId is actually an inputId (deviceId or deviceId:channel for stereo)
+        await micManager.connectMicrophoneByInputId(player.microphoneId);
       } catch (err) {
         console.error("Failed to connect mic for player", player.id, err);
       }

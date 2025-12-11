@@ -13,12 +13,43 @@ const MAX_SEMITONE_JUMP = 3;
 // Buffer size for pitch detection
 const PITCH_BUFFER_SIZE = 2048;
 
+// Channel indices for stereo devices (e.g., Singstar mics)
+export type MicrophoneChannel = "mono" | "left" | "right";
+
 export interface MicrophoneStream {
   deviceId: string;
+  channel: MicrophoneChannel;
   stream: MediaStream;
   analyser: AnalyserNode;
   source: MediaStreamAudioSourceNode;
+  splitter?: ChannelSplitterNode; // Only present for stereo split streams
   pitchDetector: PitchDetector;
+}
+
+/**
+ * Creates a unique key for a microphone input (device + channel combination)
+ */
+export function getMicrophoneInputId(
+  deviceId: string,
+  channel: MicrophoneChannel,
+): string {
+  return channel === "mono" ? deviceId : `${deviceId}:${channel}`;
+}
+
+/**
+ * Parses a microphone input ID back into deviceId and channel
+ */
+export function parseMicrophoneInputId(inputId: string): {
+  deviceId: string;
+  channel: MicrophoneChannel;
+} {
+  if (inputId.endsWith(":left")) {
+    return { deviceId: inputId.slice(0, -5), channel: "left" };
+  }
+  if (inputId.endsWith(":right")) {
+    return { deviceId: inputId.slice(0, -6), channel: "right" };
+  }
+  return { deviceId: inputId, channel: "mono" };
 }
 
 interface SmoothedPitchState {
@@ -33,6 +64,11 @@ interface SmoothedPitchState {
 export class MicrophoneManager {
   private audioContext: AudioContext;
   private streams: Map<string, MicrophoneStream> = new Map();
+  // Track shared streams for stereo devices (when we use both left and right channels)
+  private sharedStreams: Map<
+    string,
+    { stream: MediaStream; refCount: number }
+  > = new Map();
   private sampleRate: number;
   private pitchStates: Map<string, SmoothedPitchState> = new Map();
 
@@ -41,7 +77,7 @@ export class MicrophoneManager {
     this.sampleRate = audioContext.sampleRate;
   }
 
-  private initPitchState(deviceId: string): SmoothedPitchState {
+  private initPitchState(inputId: string): SmoothedPitchState {
     const state: SmoothedPitchState = {
       lastPitch: -1,
       lastMidiNote: -1,
@@ -50,7 +86,7 @@ export class MicrophoneManager {
       holdPitch: -1,
       confidence: 0,
     };
-    this.pitchStates.set(deviceId, state);
+    this.pitchStates.set(inputId, state);
     return state;
   }
 
@@ -62,67 +98,157 @@ export class MicrophoneManager {
     return Math.sqrt(sum / dataArray.length);
   }
 
-  async connectMicrophone(deviceId: string): Promise<MicrophoneStream> {
-    const existing = this.streams.get(deviceId);
+  /**
+   * Connect to a microphone, optionally selecting a specific stereo channel.
+   * For stereo devices like Singstar mics, use channel "left" or "right".
+   * For mono devices, use channel "mono" (the default).
+   */
+  async connectMicrophone(
+    deviceId: string,
+    channel: MicrophoneChannel = "mono",
+  ): Promise<MicrophoneStream> {
+    const inputId = getMicrophoneInputId(deviceId, channel);
+    const existing = this.streams.get(inputId);
     if (existing) {
       return existing;
     }
 
-    // Use 'ideal' instead of 'exact' to be more forgiving if deviceId changed
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: { ideal: deviceId },
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-    });
+    // For stereo channel selection, request stereo audio
+    const requestStereo = channel === "left" || channel === "right";
+
+    // Check if we already have a shared stream for this device (another channel is using it)
+    let stream: MediaStream;
+    let isShared = false;
+
+    const existingShared = this.sharedStreams.get(deviceId);
+    if (requestStereo && existingShared) {
+      // Reuse existing stream for the other channel
+      stream = existingShared.stream;
+      existingShared.refCount++;
+      isShared = true;
+    } else {
+      // Create new stream
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { ideal: deviceId },
+          // Request stereo if we want to split channels
+          channelCount: requestStereo ? { ideal: 2 } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      // Track as shared stream if stereo
+      if (requestStereo) {
+        this.sharedStreams.set(deviceId, { stream, refCount: 1 });
+        isShared = true;
+      }
+    }
 
     const source = this.audioContext.createMediaStreamSource(stream);
     const analyser = this.audioContext.createAnalyser();
-    // Use same size as pitch detector buffer for efficiency
     analyser.fftSize = PITCH_BUFFER_SIZE;
     analyser.smoothingTimeConstant = 0;
 
-    source.connect(analyser);
+    let splitter: ChannelSplitterNode | undefined;
+
+    if (requestStereo) {
+      // Create a channel splitter to extract left or right channel
+      splitter = this.audioContext.createChannelSplitter(2);
+      source.connect(splitter);
+
+      // Connect the desired channel (0 = left, 1 = right) to the analyser
+      // We need a gain node to convert the single channel output to mono
+      const channelIndex = channel === "left" ? 0 : 1;
+      const gainNode = this.audioContext.createGain();
+      gainNode.channelCount = 1;
+      gainNode.channelCountMode = "explicit";
+
+      splitter.connect(gainNode, channelIndex);
+      gainNode.connect(analyser);
+    } else {
+      // Mono: connect directly
+      source.connect(analyser);
+    }
 
     const pitchDetector = new PitchDetector(PITCH_BUFFER_SIZE);
     await pitchDetector.init();
 
     const micStream: MicrophoneStream = {
       deviceId,
-      stream,
+      channel,
+      stream: isShared ? stream : stream, // Keep reference for cleanup
       analyser,
       source,
+      splitter,
       pitchDetector,
     };
 
-    this.streams.set(deviceId, micStream);
+    this.streams.set(inputId, micStream);
     return micStream;
   }
 
-  disconnectMicrophone(deviceId: string): void {
-    const micStream = this.streams.get(deviceId);
+  /**
+   * Convenience method to connect using a combined input ID (deviceId:channel)
+   */
+  async connectMicrophoneByInputId(inputId: string): Promise<MicrophoneStream> {
+    const { deviceId, channel } = parseMicrophoneInputId(inputId);
+    return this.connectMicrophone(deviceId, channel);
+  }
+
+  /**
+   * Disconnect a microphone by its input ID (deviceId or deviceId:channel)
+   */
+  disconnectMicrophone(inputId: string): void {
+    const micStream = this.streams.get(inputId);
     if (!micStream) return;
 
+    const { deviceId, channel } = parseMicrophoneInputId(inputId);
+
+    // Disconnect audio nodes
     micStream.source.disconnect();
-    for (const track of micStream.stream.getTracks()) {
-      track.stop();
+    if (micStream.splitter) {
+      micStream.splitter.disconnect();
     }
     micStream.pitchDetector.dispose();
 
-    this.streams.delete(deviceId);
-    this.pitchStates.delete(deviceId);
+    // Handle shared stream cleanup for stereo devices
+    if (channel !== "mono") {
+      const shared = this.sharedStreams.get(deviceId);
+      if (shared) {
+        shared.refCount--;
+        if (shared.refCount <= 0) {
+          // No more references, stop the stream
+          for (const track of shared.stream.getTracks()) {
+            track.stop();
+          }
+          this.sharedStreams.delete(deviceId);
+        }
+      }
+    } else {
+      // Mono stream: stop directly
+      for (const track of micStream.stream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    this.streams.delete(inputId);
+    this.pitchStates.delete(inputId);
   }
 
   disconnectAll(): void {
-    for (const deviceId of this.streams.keys()) {
-      this.disconnectMicrophone(deviceId);
+    for (const inputId of this.streams.keys()) {
+      this.disconnectMicrophone(inputId);
     }
   }
 
-  getPitch(deviceId: string): number {
-    const micStream = this.streams.get(deviceId);
+  /**
+   * Get the current detected pitch for a microphone input.
+   * @param inputId Either a deviceId (for mono) or deviceId:channel (for stereo)
+   */
+  getPitch(inputId: string): number {
+    const micStream = this.streams.get(inputId);
     if (!micStream) return -1;
 
     const bufferSize = micStream.pitchDetector.getBufferSize();
@@ -130,9 +256,9 @@ export class MicrophoneManager {
     micStream.analyser.getFloatTimeDomainData(dataArray);
 
     // Get or initialize pitch state for smoothing
-    let state = this.pitchStates.get(deviceId);
+    let state = this.pitchStates.get(inputId);
     if (!state) {
-      state = this.initPitchState(deviceId);
+      state = this.initPitchState(inputId);
     }
 
     const now = performance.now();
@@ -195,17 +321,31 @@ export class MicrophoneManager {
 
   getAllPitches(): Map<string, number> {
     const pitches = new Map<string, number>();
-    for (const deviceId of this.streams.keys()) {
-      pitches.set(deviceId, this.getPitch(deviceId));
+    for (const inputId of this.streams.keys()) {
+      pitches.set(inputId, this.getPitch(inputId));
     }
     return pitches;
   }
 
-  getConnectedDevices(): string[] {
+  /**
+   * Get all connected input IDs (deviceId for mono, deviceId:channel for stereo)
+   */
+  getConnectedInputs(): string[] {
     return Array.from(this.streams.keys());
   }
 
-  isConnected(deviceId: string): boolean {
-    return this.streams.has(deviceId);
+  /**
+   * @deprecated Use getConnectedInputs() instead
+   */
+  getConnectedDevices(): string[] {
+    return this.getConnectedInputs();
+  }
+
+  /**
+   * Check if a microphone input is connected
+   * @param inputId Either a deviceId (for mono) or deviceId:channel (for stereo)
+   */
+  isConnected(inputId: string): boolean {
+    return this.streams.has(inputId);
   }
 }

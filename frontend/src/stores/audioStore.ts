@@ -1,12 +1,34 @@
 import { create } from "zustand";
+import {
+  type MicrophoneChannel,
+  getMicrophoneInputId,
+} from "../audio/MicrophoneManager";
 
 export interface Microphone {
   deviceId: string;
   label: string;
+  channelCount: number; // 1 = mono, 2 = stereo (like Singstar mics)
 }
 
-// Persisted mic-to-color assignments
+/**
+ * Represents an assignable microphone input.
+ * For stereo devices, each channel becomes a separate input.
+ */
+export interface MicrophoneInput {
+  inputId: string; // deviceId for mono, deviceId:left or deviceId:right for stereo
+  deviceId: string;
+  channel: MicrophoneChannel;
+  label: string;
+}
+
+// Persisted mic-to-color assignments (now uses inputId instead of deviceId)
 interface MicColorAssignment {
+  inputId: string; // Can be deviceId or deviceId:channel
+  colorId: string;
+}
+
+// Legacy format for migration
+interface LegacyMicColorAssignment {
   deviceId: string;
   colorId: string;
 }
@@ -17,7 +39,19 @@ function loadMicAssignments(): MicColorAssignment[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Migrate legacy format (deviceId) to new format (inputId)
+      if (
+        parsed.length > 0 &&
+        "deviceId" in parsed[0] &&
+        !("inputId" in parsed[0])
+      ) {
+        return (parsed as LegacyMicColorAssignment[]).map((a) => ({
+          inputId: a.deviceId,
+          colorId: a.colorId,
+        }));
+      }
+      return parsed;
     }
   } catch {
     // Ignore parse errors
@@ -32,6 +66,7 @@ function saveMicAssignments(assignments: MicColorAssignment[]) {
 interface AudioState {
   audioContext: AudioContext | null;
   microphones: Microphone[];
+  microphoneInputs: MicrophoneInput[]; // All assignable inputs (mono devices + stereo channels)
   micAssignments: MicColorAssignment[];
   permissionGranted: boolean;
   isInitialized: boolean;
@@ -39,17 +74,86 @@ interface AudioState {
   initAudio: () => Promise<void>;
   requestMicrophonePermission: () => Promise<void>;
   refreshMicrophones: () => Promise<void>;
-  assignMicColor: (deviceId: string, colorId: string) => void;
-  unassignMic: (deviceId: string) => void;
-  getMicByColor: (colorId: string) => Microphone | undefined;
-  getColorByMic: (deviceId: string) => string | undefined;
+  assignMicColor: (inputId: string, colorId: string) => void;
+  unassignMic: (inputId: string) => void;
+  getMicByColor: (colorId: string) => MicrophoneInput | undefined;
+  getColorByMic: (inputId: string) => string | undefined;
   getAssignedMics: () => MicColorAssignment[];
   getAudioContext: () => AudioContext;
+}
+
+/**
+ * Detects the number of channels a microphone device supports.
+ * Returns 2 for stereo devices (like Singstar mics), 1 for mono.
+ */
+async function detectChannelCount(deviceId: string): Promise<number> {
+  try {
+    // Request stereo and see what we actually get
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: deviceId },
+        channelCount: { ideal: 2 },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+
+    const track = stream.getAudioTracks()[0];
+    const settings = track.getSettings();
+    const channelCount = settings.channelCount ?? 1;
+
+    // Clean up
+    for (const t of stream.getTracks()) {
+      t.stop();
+    }
+
+    return channelCount;
+  } catch {
+    return 1; // Default to mono on error
+  }
+}
+
+/**
+ * Builds the list of assignable microphone inputs from devices.
+ * Stereo devices get two entries (left/right channels), mono devices get one.
+ */
+function buildMicrophoneInputs(microphones: Microphone[]): MicrophoneInput[] {
+  const inputs: MicrophoneInput[] = [];
+
+  for (const mic of microphones) {
+    if (mic.channelCount >= 2) {
+      // Stereo device: create two inputs for left and right channels
+      inputs.push({
+        inputId: getMicrophoneInputId(mic.deviceId, "left"),
+        deviceId: mic.deviceId,
+        channel: "left",
+        label: `${mic.label} (Left / Blue)`,
+      });
+      inputs.push({
+        inputId: getMicrophoneInputId(mic.deviceId, "right"),
+        deviceId: mic.deviceId,
+        channel: "right",
+        label: `${mic.label} (Right / Red)`,
+      });
+    } else {
+      // Mono device: single input
+      inputs.push({
+        inputId: getMicrophoneInputId(mic.deviceId, "mono"),
+        deviceId: mic.deviceId,
+        channel: "mono",
+        label: mic.label,
+      });
+    }
+  }
+
+  return inputs;
 }
 
 export const useAudioStore = create<AudioState>((set, get) => ({
   audioContext: null,
   microphones: [],
+  microphoneInputs: [],
   micAssignments: loadMicAssignments(),
   permissionGranted: false,
   isInitialized: false,
@@ -79,44 +183,56 @@ export const useAudioStore = create<AudioState>((set, get) => ({
 
   refreshMicrophones: async () => {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const microphones = devices
-      .filter((device) => device.kind === "audioinput")
-      .map((device) => ({
-        deviceId: device.deviceId,
-        label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
-      }));
+    const audioInputDevices = devices.filter(
+      (device) => device.kind === "audioinput",
+    );
 
-    // Clean up stale assignments (device IDs that no longer exist)
-    const validDeviceIds = new Set(microphones.map((m) => m.deviceId));
+    // Detect channel count for each device
+    const microphones: Microphone[] = await Promise.all(
+      audioInputDevices.map(async (device) => {
+        const channelCount = await detectChannelCount(device.deviceId);
+        return {
+          deviceId: device.deviceId,
+          label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
+          channelCount,
+        };
+      }),
+    );
+
+    // Build the list of assignable inputs
+    const microphoneInputs = buildMicrophoneInputs(microphones);
+
+    // Clean up stale assignments (input IDs that no longer exist)
+    const validInputIds = new Set(microphoneInputs.map((m) => m.inputId));
     const currentAssignments = get().micAssignments;
     const validAssignments = currentAssignments.filter((a) =>
-      validDeviceIds.has(a.deviceId),
+      validInputIds.has(a.inputId),
     );
 
     if (validAssignments.length !== currentAssignments.length) {
       saveMicAssignments(validAssignments);
-      set({ microphones, micAssignments: validAssignments });
+      set({ microphones, microphoneInputs, micAssignments: validAssignments });
     } else {
-      set({ microphones });
+      set({ microphones, microphoneInputs });
     }
   },
 
-  assignMicColor: (deviceId, colorId) => {
+  assignMicColor: (inputId, colorId) => {
     set((state) => {
-      // Remove any existing assignment for this color or this mic
+      // Remove any existing assignment for this color or this input
       const filtered = state.micAssignments.filter(
-        (a) => a.deviceId !== deviceId && a.colorId !== colorId,
+        (a) => a.inputId !== inputId && a.colorId !== colorId,
       );
-      const newAssignments = [...filtered, { deviceId, colorId }];
+      const newAssignments = [...filtered, { inputId, colorId }];
       saveMicAssignments(newAssignments);
       return { micAssignments: newAssignments };
     });
   },
 
-  unassignMic: (deviceId) => {
+  unassignMic: (inputId) => {
     set((state) => {
       const newAssignments = state.micAssignments.filter(
-        (a) => a.deviceId !== deviceId,
+        (a) => a.inputId !== inputId,
       );
       saveMicAssignments(newAssignments);
       return { micAssignments: newAssignments };
@@ -124,15 +240,15 @@ export const useAudioStore = create<AudioState>((set, get) => ({
   },
 
   getMicByColor: (colorId) => {
-    const { microphones, micAssignments } = get();
+    const { microphoneInputs, micAssignments } = get();
     const assignment = micAssignments.find((a) => a.colorId === colorId);
     if (!assignment) return undefined;
-    return microphones.find((m) => m.deviceId === assignment.deviceId);
+    return microphoneInputs.find((m) => m.inputId === assignment.inputId);
   },
 
-  getColorByMic: (deviceId) => {
+  getColorByMic: (inputId) => {
     const { micAssignments } = get();
-    return micAssignments.find((a) => a.deviceId === deviceId)?.colorId;
+    return micAssignments.find((a) => a.inputId === inputId)?.colorId;
   },
 
   getAssignedMics: () => {

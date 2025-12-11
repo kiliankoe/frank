@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useAudioStore } from "../../stores";
+import { useAudioStore, type MicrophoneInput } from "../../stores";
 import { PLAYER_COLORS, getPlayerColor } from "../../constants/playerColors";
 
-function useMicLevels(
-  microphones: { deviceId: string; label: string }[],
-  isOpen: boolean,
-) {
+/**
+ * Hook to monitor audio levels for microphone inputs.
+ * Handles both mono devices and individual stereo channels.
+ */
+function useMicLevels(inputs: MicrophoneInput[], isOpen: boolean) {
   const [levels, setLevels] = useState<Map<string, number>>(new Map());
   const streamsRef = useRef<Map<string, MediaStream>>(new Map());
   const analysersRef = useRef<Map<string, AnalyserNode>>(new Map());
@@ -14,7 +15,7 @@ function useMicLevels(
   const isSetupRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen || microphones.length === 0) {
+    if (!isOpen || inputs.length === 0) {
       return;
     }
 
@@ -41,14 +42,30 @@ function useMicLevels(
         await ctx.resume();
       }
 
-      // Connect to each microphone
-      for (const mic of microphones) {
+      // Group inputs by deviceId to share streams for stereo devices
+      const deviceInputs = new Map<string, MicrophoneInput[]>();
+      for (const input of inputs) {
+        const existing = deviceInputs.get(input.deviceId) ?? [];
+        existing.push(input);
+        deviceInputs.set(input.deviceId, existing);
+      }
+
+      // Connect to each device and set up analysers for each channel
+      for (const [deviceId, deviceChannels] of deviceInputs) {
         if (isCancelled) return;
-        if (streamsRef.current.has(mic.deviceId)) continue;
+        if (streamsRef.current.has(deviceId)) continue;
 
         try {
+          // Request stereo if any channel needs it
+          const needsStereo = deviceChannels.some((c) => c.channel !== "mono");
           const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: { ideal: mic.deviceId } },
+            audio: {
+              deviceId: { ideal: deviceId },
+              channelCount: needsStereo ? { ideal: 2 } : undefined,
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
           });
 
           if (isCancelled) {
@@ -57,16 +74,40 @@ function useMicLevels(
             }
             return;
           }
-          streamsRef.current.set(mic.deviceId, stream);
+          streamsRef.current.set(deviceId, stream);
 
           const source = ctx.createMediaStreamSource(stream);
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.3;
-          source.connect(analyser);
-          analysersRef.current.set(mic.deviceId, analyser);
+
+          if (needsStereo) {
+            // Create channel splitter for stereo devices
+            const splitter = ctx.createChannelSplitter(2);
+            source.connect(splitter);
+
+            // Set up analyser for each channel
+            for (const input of deviceChannels) {
+              const analyser = ctx.createAnalyser();
+              analyser.fftSize = 256;
+              analyser.smoothingTimeConstant = 0.3;
+
+              const channelIndex = input.channel === "left" ? 0 : 1;
+              const gainNode = ctx.createGain();
+              gainNode.channelCount = 1;
+              gainNode.channelCountMode = "explicit";
+              splitter.connect(gainNode, channelIndex);
+              gainNode.connect(analyser);
+
+              analysersRef.current.set(input.inputId, analyser);
+            }
+          } else {
+            // Mono device: connect directly
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.3;
+            source.connect(analyser);
+            analysersRef.current.set(deviceChannels[0].inputId, analyser);
+          }
         } catch (err) {
-          console.error(`Failed to connect to mic ${mic.label}:`, err);
+          console.error(`Failed to connect to mic ${deviceId}:`, err);
         }
       }
 
@@ -78,7 +119,7 @@ function useMicLevels(
 
         const newLevels = new Map<string, number>();
 
-        for (const [deviceId, analyser] of analysersRef.current) {
+        for (const [inputId, analyser] of analysersRef.current) {
           const dataArray = new Float32Array(analyser.fftSize);
           analyser.getFloatTimeDomainData(dataArray);
 
@@ -90,7 +131,7 @@ function useMicLevels(
           const rms = Math.sqrt(sum / dataArray.length);
           const level = Math.min(1, rms * 5);
 
-          newLevels.set(deviceId, level);
+          newLevels.set(inputId, level);
         }
 
         setLevels(newLevels);
@@ -124,7 +165,7 @@ function useMicLevels(
         audioContextRef.current = null;
       }
     };
-  }, [isOpen, microphones]);
+  }, [isOpen, inputs]);
 
   return levels;
 }
@@ -136,7 +177,7 @@ interface MicSettingsModalProps {
 
 export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
   const {
-    microphones,
+    microphoneInputs,
     micAssignments,
     permissionGranted,
     requestMicrophonePermission,
@@ -146,7 +187,7 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
     getColorByMic,
   } = useAudioStore();
 
-  const levels = useMicLevels(microphones, isOpen);
+  const levels = useMicLevels(microphoneInputs, isOpen);
 
   useEffect(() => {
     if (isOpen && permissionGranted) {
@@ -154,22 +195,22 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
     }
   }, [isOpen, permissionGranted, refreshMicrophones]);
 
-  const handleColorClick = (deviceId: string, colorId: string) => {
-    const currentColor = getColorByMic(deviceId);
+  const handleColorClick = (inputId: string, colorId: string) => {
+    const currentColor = getColorByMic(inputId);
     if (currentColor === colorId) {
       // Clicking same color unassigns
-      unassignMic(deviceId);
+      unassignMic(inputId);
     } else {
-      assignMicColor(deviceId, colorId);
+      assignMicColor(inputId, colorId);
     }
   };
 
-  const getAssignedColor = (deviceId: string): string | undefined => {
-    return micAssignments.find((a) => a.deviceId === deviceId)?.colorId;
+  const getAssignedColor = (inputId: string): string | undefined => {
+    return micAssignments.find((a) => a.inputId === inputId)?.colorId;
   };
 
   const isColorAssigned = (colorId: string): string | undefined => {
-    return micAssignments.find((a) => a.colorId === colorId)?.deviceId;
+    return micAssignments.find((a) => a.colorId === colorId)?.inputId;
   };
 
   if (!isOpen) return null;
@@ -216,21 +257,22 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
               Enable Microphone
             </button>
           </div>
-        ) : microphones.length === 0 ? (
+        ) : microphoneInputs.length === 0 ? (
           <p className="text-gray-400 text-center py-8">No microphones found</p>
         ) : (
           <div className="space-y-4">
             <p className="text-gray-400 text-sm mb-4">
               Assign a color to each microphone. Speak into a mic to see its
-              level.
+              level. Stereo devices (like Singstar mics) show separate
+              left/right channels.
             </p>
 
-            {microphones.map((mic) => {
-              const level = levels.get(mic.deviceId) ?? 0;
-              const assignedColor = getAssignedColor(mic.deviceId);
+            {microphoneInputs.map((input) => {
+              const level = levels.get(input.inputId) ?? 0;
+              const assignedColor = getAssignedColor(input.inputId);
 
               return (
-                <div key={mic.deviceId} className="bg-white/5 rounded-lg p-4">
+                <div key={input.inputId} className="bg-white/5 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-3">
                     {assignedColor && (
                       <span
@@ -241,8 +283,19 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
                       />
                     )}
                     <span className="text-white text-sm truncate flex-1">
-                      {mic.label}
+                      {input.label}
                     </span>
+                    {input.channel !== "mono" && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          input.channel === "left"
+                            ? "bg-blue-500/20 text-blue-300"
+                            : "bg-red-500/20 text-red-300"
+                        }`}
+                      >
+                        {input.channel === "left" ? "L" : "R"}
+                      </span>
+                    )}
                   </div>
 
                   {/* Audio level meter */}
@@ -259,14 +312,14 @@ export function MicSettingsModal({ isOpen, onClose }: MicSettingsModalProps) {
                       const isThisMicColor = assignedColor === color.id;
                       const assignedToOther = isColorAssigned(color.id);
                       const isUsedByOther =
-                        assignedToOther && assignedToOther !== mic.deviceId;
+                        assignedToOther && assignedToOther !== input.inputId;
 
                       return (
                         <button
                           key={color.id}
                           type="button"
                           onClick={() =>
-                            handleColorClick(mic.deviceId, color.id)
+                            handleColorClick(input.inputId, color.id)
                           }
                           className={`w-10 h-10 rounded-full transition-all ${
                             isThisMicColor
