@@ -8,22 +8,41 @@ use axum::{
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
+use utoipa::IntoParams;
 
 use crate::error::AppError;
-use crate::song::SongSummary;
+use crate::song::{Song, SongSummary};
 use crate::state::AppState;
 
-/// GET /api/songs - List all songs
+/// List all songs
+#[utoipa::path(
+    get,
+    path = "/api/songs",
+    responses(
+        (status = 200, description = "List all songs", body = Vec<SongSummary>)
+    ),
+    tag = "songs"
+)]
 pub async fn list_songs(State(state): State<AppState>) -> Json<Vec<SongSummary>> {
     Json(state.get_song_list().await)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct SearchQuery {
+    /// Search query string (matches title or artist)
     pub q: String,
 }
 
-/// GET /api/search?q=... - Search songs
+/// Search songs by title or artist
+#[utoipa::path(
+    get,
+    path = "/api/search",
+    params(SearchQuery),
+    responses(
+        (status = 200, description = "Search results", body = Vec<SongSummary>)
+    ),
+    tag = "songs"
+)]
 pub async fn search_songs(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
@@ -31,7 +50,19 @@ pub async fn search_songs(
     Json(state.search_songs(&query.q).await)
 }
 
-/// GET /api/songs/:id - Get a specific song with notes
+/// Get a specific song with full note data
+#[utoipa::path(
+    get,
+    path = "/api/songs/{id}",
+    params(
+        ("id" = String, Path, description = "Song ID")
+    ),
+    responses(
+        (status = 200, description = "Song found", body = Song),
+        (status = 404, description = "Song not found")
+    ),
+    tag = "songs"
+)]
 pub async fn get_song(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -44,8 +75,23 @@ pub async fn get_song(
     Ok(Json(song))
 }
 
-/// GET /files/:song_id/:file_type - Serve song files (audio, video, cover, background)
+/// Serve song files (audio, video, cover, background)
+///
 /// Supports HTTP Range requests for seeking in media files
+#[utoipa::path(
+    get,
+    path = "/files/{song_id}/{file_type}",
+    params(
+        ("song_id" = String, Path, description = "Song ID"),
+        ("file_type" = String, Path, description = "File type: audio, video, cover, or background")
+    ),
+    responses(
+        (status = 200, description = "File content"),
+        (status = 206, description = "Partial content (range request)"),
+        (status = 404, description = "File not found")
+    ),
+    tag = "files"
+)]
 pub async fn serve_file(
     State(state): State<AppState>,
     Path((song_id, file_type)): Path<(String, String)>,

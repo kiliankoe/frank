@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Song {
     pub id: String,
     pub metadata: SongMetadata,
@@ -15,7 +16,7 @@ pub struct Song {
     pub files: SongFiles,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SongMetadata {
     pub title: String,
     pub artist: String,
@@ -58,7 +59,7 @@ pub struct SongFiles {
     pub background_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum NoteType {
     Normal,
@@ -68,7 +69,7 @@ pub enum NoteType {
     GoldenRap,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Note {
     pub note_type: NoteType,
     pub start_beat: i32,
@@ -77,7 +78,7 @@ pub struct Note {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LineBreak {
     pub start_beat: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,7 +86,7 @@ pub struct LineBreak {
 }
 
 /// Summary of a song for listing (without full note data)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SongSummary {
     pub id: String,
     pub title: String,
